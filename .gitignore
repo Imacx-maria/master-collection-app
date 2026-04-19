@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+.vercel/
+coverage/
+bundle.zip
+
+.env
+.env.*
+!.env.example
+
+CLAUDE.local.md
+settings.local.json
