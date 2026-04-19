@@ -39,4 +39,28 @@ AGENTS.md
 
 When this repo is cloned by itself, use the matching files in the `master-collection` repository for the parent docs.
 
-No runtime has been scaffolded yet.
+## Commands
+
+```bash
+bun run dev
+bun run build
+bun run test
+bun run lint
+bun run bundle
+```
+
+`bun run bundle` builds the extension and creates the Webflow upload zip:
+
+```text
+bundles/master-collection-webflow-app.zip
+```
+
+## MVP Flow
+
+The first installer flow is:
+
+```text
+install code -> package -> target site/page -> font checklist -> asset upload -> XscpData patch -> clipboard paste
+```
+
+Use `DEMO` as the local mock install code until the package API is configured.

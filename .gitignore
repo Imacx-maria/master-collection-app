@@ -6,6 +6,8 @@ build/
 .vercel/
 coverage/
 bundle.zip
+bundles/
+*.tsbuildinfo
 
 .env
 .env.*
