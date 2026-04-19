@@ -8,6 +8,12 @@ This folder maps to:
 https://github.com/Imacx-maria/master-collection-app.git
 ```
 
+The shared product docs live in the parent repository:
+
+```text
+https://github.com/Imacx-maria/master-collection.git
+```
+
 ## Boundary
 
 The app owns:
@@ -30,5 +36,7 @@ AGENTS.md
 ../docs/WEBFLOW_APP_RESEARCH.md
 ../docs/plans/001-master-collection-extension-mvp.md
 ```
+
+When this repo is cloned by itself, use the matching files in the `master-collection` repository for the parent docs.
 
 No runtime has been scaffolded yet.
