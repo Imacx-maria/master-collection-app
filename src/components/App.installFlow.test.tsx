@@ -184,6 +184,170 @@ describe("App lane flows", () => {
 
   // --- End new Lane B paste-validate tests ---
 
+  // --- Lane B font enforcement parity (APP-REG-010 / R2) ---
+
+  it("Lane B: Copy button is enabled after prepare when all required fonts are present", async () => {
+    adapterMocks.switchPage.mockResolvedValue({
+      siteId: "site_123",
+      siteName: "Test Site",
+      pageId: "page_home",
+      pageName: "Home",
+      mode: "designer",
+    });
+    adapterMocks.scanFonts.mockResolvedValue({
+      installed: [{ family: "Sora", weights: [400], styles: ["normal"], required: true }],
+      missing: [],
+      checkedFamilies: ["Sora"],
+      source: "styles-and-variables",
+      message: "Required fonts detected.",
+    });
+    adapterMocks.createAsset.mockResolvedValue({
+      packageAssetKey: "hero",
+      fileName: "hero.png",
+      assetId: "asset_hero",
+      url: "https://uploads.example.com/hero.png",
+      mode: "designer",
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Lane B/i }));
+    pasteLaneBPayload(VALID_LANE_B_PAYLOAD);
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 page\(s\) ready for install\./i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Prepare payload/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Prepared Home\./i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /Copy for Webflow/i })).toBeEnabled();
+  });
+
+  it("Lane B: Copy button is disabled when a required font is missing, and re-enables after Recheck shows it installed", async () => {
+    adapterMocks.switchPage.mockResolvedValue({
+      siteId: "site_123",
+      siteName: "Test Site",
+      pageId: "page_home",
+      pageName: "Home",
+      mode: "designer",
+    });
+    // First scan: required font missing
+    adapterMocks.scanFonts.mockResolvedValueOnce({
+      installed: [],
+      missing: [{ family: "Sora", weights: [400], styles: ["normal"], required: true }],
+      checkedFamilies: ["Sora"],
+      source: "styles-and-variables",
+      message: "Some required fonts were not detected.",
+    });
+    adapterMocks.createAsset.mockResolvedValue({
+      packageAssetKey: "hero",
+      fileName: "hero.png",
+      assetId: "asset_hero",
+      url: "https://uploads.example.com/hero.png",
+      mode: "designer",
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Lane B/i }));
+    pasteLaneBPayload(VALID_LANE_B_PAYLOAD);
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 page\(s\) ready for install\./i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Prepare payload/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Prepared Home\./i)).toBeInTheDocument();
+    });
+
+    // Copy must be disabled — required font is missing
+    expect(screen.getByRole("button", { name: /Copy for Webflow/i })).toBeDisabled();
+
+    // Second scan: font now installed
+    adapterMocks.scanFonts.mockResolvedValueOnce({
+      installed: [{ family: "Sora", weights: [400], styles: ["normal"], required: true }],
+      missing: [],
+      checkedFamilies: ["Sora"],
+      source: "styles-and-variables",
+      message: "Required fonts detected.",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Recheck/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Copy for Webflow/i })).toBeEnabled();
+    });
+  });
+
+  it("Lane B: Copy button stays enabled when only optional fonts are missing (no required fonts in payload)", async () => {
+    const payloadWithOptionalFontOnly = JSON.stringify({
+      type: "flowbridge/app-multipage-payload",
+      pageCount: 1,
+      generatedBy: "FlowBridge multi-page payload",
+      warnings: [],
+      pages: [
+        {
+          index: 0,
+          name: "Home",
+          slug: "home",
+          assets: [],
+          fonts: [{ family: "OptionalFont", required: false }],
+          xscpData: { type: "@webflow/XscpData", payload: { assets: [] } },
+          diagnostics: { payloadAssetsLength: 0, localImageRefs: [], crashHazards: [], pageIds: [] },
+          warnings: [],
+        },
+      ],
+    });
+
+    adapterMocks.switchPage.mockResolvedValue({
+      siteId: "site_123",
+      siteName: "Test Site",
+      pageId: "page_home",
+      pageName: "Home",
+      mode: "designer",
+    });
+    // Optional font is missing — required font list is empty so gate should pass
+    adapterMocks.scanFonts.mockResolvedValue({
+      installed: [],
+      missing: [{ family: "OptionalFont", required: false }],
+      checkedFamilies: ["OptionalFont"],
+      source: "styles-and-variables",
+      message: "Some fonts not detected.",
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Lane B/i }));
+
+    fireEvent.paste(screen.getByRole("button", { name: /Lane B payload paste target/i }), {
+      clipboardData: { getData: () => payloadWithOptionalFontOnly },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 page\(s\) ready for install\./i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Prepare payload/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Prepared Home\./i)).toBeInTheDocument();
+    });
+
+    // Copy must be enabled — no required fonts are missing
+    expect(screen.getByRole("button", { name: /Copy for Webflow/i })).toBeEnabled();
+  });
+
+  // --- End Lane B font enforcement parity tests ---
+
   it("blocks Lane A copy when required fonts are still missing", async () => {
     adapterMocks.getTargetContext.mockResolvedValue({
       siteId: "site_123",

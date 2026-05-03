@@ -111,6 +111,9 @@ function TemplateInstallFlow({
   const [laneBPlan, setLaneBPlan] = useState<AppInstallPlan | null>(null);
   const [resolvedLaneBPages, setResolvedLaneBPages] = useState<ResolvedTargetPage[]>([]);
   const [preparedLaneBPage, setPreparedLaneBPage] = useState<ResolvedTargetPage | null>(null);
+  const [laneBPackageData, setLaneBPackageData] = useState<MasterCollectionPackage | null>(null);
+  const [laneBTargetContext, setLaneBTargetContext] = useState<WebflowTargetContext | null>(null);
+  const [fontScan, setFontScan] = useState<FontDetectionResult | null>(null);
   const [patchedXscpData, setPatchedXscpData] = useState<unknown | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +132,9 @@ function TemplateInstallFlow({
     setLaneBPlan(plan);
     setResolvedLaneBPages(resolvedPages);
     setPreparedLaneBPage(null);
+    setLaneBPackageData(null);
+    setLaneBTargetContext(null);
+    setFontScan(null);
     setPatchedXscpData(null);
     setStatus(`Detected FlowBridge multi-page payload with ${payload.pageCount} page(s).`);
     setStep("pages");
@@ -141,11 +147,17 @@ function TemplateInstallFlow({
     }
 
     setError(null);
+    setFontScan(null);
     setPatchedXscpData(null);
     setStatus(`Preparing ${resolved.source.displayName} for Webflow paste...`);
 
     const targetContext = await adapter.switchPage(resolved.target);
     const packageData = packageFromInstallPlanPage(resolved.source);
+
+    setStatus("Checking fonts on the current site...");
+    const nextFontScan = await adapter.scanFonts(packageData.fonts);
+    setFontScan(nextFontScan);
+
     const uploadedAssets = await uploadPackageAssets({
       packageData,
       adapter,
@@ -158,10 +170,20 @@ function TemplateInstallFlow({
       uploadedAssets,
     });
 
+    setLaneBPackageData(packageData);
+    setLaneBTargetContext(targetContext);
     setPreparedLaneBPage(resolved);
     setPatchedXscpData(prepared);
     setStatus(`Prepared ${resolved.source.displayName}. Copy the payload for the current Webflow page.`);
     setStep("copy");
+  }
+
+  async function handleRecheckLaneBFonts() {
+    if (!laneBPackageData) return;
+    setStatus("Rechecking fonts...");
+    const nextFontScan = await adapter.scanFonts(laneBPackageData.fonts);
+    setFontScan(nextFontScan);
+    setStatus(nextFontScan.message ?? "Font check complete.");
   }
 
   async function handleCopy() {
@@ -183,12 +205,19 @@ function TemplateInstallFlow({
     setLaneBPlan(null);
     setResolvedLaneBPages([]);
     setPreparedLaneBPage(null);
+    setLaneBPackageData(null);
+    setLaneBTargetContext(null);
+    setFontScan(null);
     setPatchedXscpData(null);
     setStatus(null);
     setError(null);
   }
 
   const activeStepIndex = TEMPLATE_STEPS.findIndex((item) => item.id === step);
+  const canCopy = Boolean(
+    isSinglePageXscpData(patchedXscpData)
+    && (!laneBPackageData || areRequiredFontsReady(laneBPackageData, fontScan)),
+  );
 
   return (
     <section className="space-y-3">
@@ -232,7 +261,13 @@ function TemplateInstallFlow({
       ) : null}
 
       {step === "copy" && patchedXscpData ? (
-        <ClipboardStep
+        <LaneBCopyStep
+          packageData={laneBPackageData}
+          fontScan={fontScan}
+          siteId={laneBTargetContext?.siteId ?? ""}
+          canCopy={canCopy}
+          onRecheckFonts={() => runAction(handleRecheckLaneBFonts)}
+          onOpenWebflowFonts={() => window.open(buildFontsDashboardUrl(laneBTargetContext?.siteId ?? ""), "_blank", "noopener,noreferrer")}
           onCopy={() => runAction(handleCopy)}
           onBack={() => setStep("pages")}
         />
@@ -628,10 +663,22 @@ function LaneAPasteStep({
   );
 }
 
-function ClipboardStep({
+
+function LaneBCopyStep({
+  packageData,
+  fontScan,
+  canCopy,
+  onRecheckFonts,
+  onOpenWebflowFonts,
   onCopy,
   onBack,
 }: {
+  packageData: MasterCollectionPackage | null;
+  fontScan: FontDetectionResult | null;
+  siteId: string;
+  canCopy: boolean;
+  onRecheckFonts: () => void;
+  onOpenWebflowFonts: () => void;
   onCopy: () => void;
   onBack: () => void;
 }) {
@@ -642,9 +689,17 @@ function ClipboardStep({
         <CardDescription>Copy the final payload, click inside the Webflow canvas, and paste.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {packageData ? (
+          <FontSection
+            packageData={packageData}
+            fontScan={fontScan}
+            onRecheckFonts={onRecheckFonts}
+            onOpenWebflowFonts={onOpenWebflowFonts}
+          />
+        ) : null}
         <p className="text-xs text-muted-foreground">Copy the package payload, click the Webflow canvas, then paste.</p>
         <div className="flex gap-2">
-          <Button type="button" onClick={onCopy}>
+          <Button type="button" onClick={onCopy} disabled={!canCopy}>
             <Copy className="h-3.5 w-3.5" />
             Copy for Webflow
           </Button>
