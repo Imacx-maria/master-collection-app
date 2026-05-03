@@ -348,6 +348,214 @@ describe("App lane flows", () => {
 
   // --- End Lane B font enforcement parity tests ---
 
+  // --- R4B: CMS step conditional on cmsManifest ---
+
+  it("Lane B with cmsManifest containing collectionLists: CMS step renders CmsImportPanel after page plan", async () => {
+    adapterMocks.switchPage.mockResolvedValue({
+      siteId: "site_123",
+      siteName: "Test Site",
+      pageId: "page_home",
+      pageName: "Home",
+      mode: "designer",
+    });
+    adapterMocks.scanFonts.mockResolvedValue({
+      installed: [],
+      missing: [],
+      checkedFamilies: [],
+      source: "styles-and-variables",
+      message: "No required fonts.",
+    });
+    adapterMocks.createAsset.mockResolvedValue({
+      packageAssetKey: "hero",
+      fileName: "hero.png",
+      assetId: "asset_hero",
+      url: "https://uploads.example.com/hero.png",
+      mode: "designer",
+    });
+
+    const payloadWithCms = JSON.stringify({
+      type: "flowbridge/app-multipage-payload",
+      pageCount: 1,
+      generatedBy: "FlowBridge multi-page payload",
+      warnings: [],
+      cmsManifest: {
+        collectionLists: [
+          {
+            slug: "team",
+            displayName: "Team",
+            bindings: [],
+            fields: [],
+            items: [],
+            csvImport: { expected: true },
+          },
+        ],
+      },
+      pages: [
+        {
+          index: 0,
+          name: "Home",
+          slug: "home",
+          assets: [
+            {
+              key: "hero",
+              fileName: "hero.png",
+              url: "https://cdn.example.com/hero.png",
+              mimeType: "image/png",
+              required: true,
+              patchTargets: [],
+            },
+          ],
+          fonts: [],
+          xscpData: { type: "@webflow/XscpData", payload: { assets: [] } },
+          diagnostics: { payloadAssetsLength: 0, localImageRefs: [], crashHazards: [], pageIds: [] },
+          warnings: [],
+        },
+      ],
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Lane B/i }));
+
+    fireEvent.paste(screen.getByRole("button", { name: /Lane B payload paste target/i }), {
+      clipboardData: { getData: () => payloadWithCms },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 page\(s\) ready for install\./i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Prepare payload/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/CMS Import/i)).toBeInTheDocument();
+    });
+
+    // The copy step (LaneBCopyStep) must NOT be rendered yet
+    expect(screen.queryByRole("button", { name: /Copy for Webflow/i })).toBeNull();
+  });
+
+  it("Lane B with cmsManifest absent: after prepare the flow advances directly to the copy step", async () => {
+    adapterMocks.switchPage.mockResolvedValue({
+      siteId: "site_123",
+      siteName: "Test Site",
+      pageId: "page_home",
+      pageName: "Home",
+      mode: "designer",
+    });
+    adapterMocks.scanFonts.mockResolvedValue({
+      installed: [],
+      missing: [],
+      checkedFamilies: [],
+      source: "styles-and-variables",
+      message: "No required fonts.",
+    });
+    adapterMocks.createAsset.mockResolvedValue({
+      packageAssetKey: "hero",
+      fileName: "hero.png",
+      assetId: "asset_hero",
+      url: "https://uploads.example.com/hero.png",
+      mode: "designer",
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Lane B/i }));
+    pasteLaneBPayload(VALID_LANE_B_PAYLOAD);
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 page\(s\) ready for install\./i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Prepare payload/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Copy for Webflow/i })).toBeInTheDocument();
+    });
+
+    // No CMS UI when cmsManifest is absent
+    expect(screen.queryByText(/CMS Import/i)).toBeNull();
+  });
+
+  it("Lane B with cmsManifest.collectionLists empty: flow skips CMS step silently and goes to copy", async () => {
+    adapterMocks.switchPage.mockResolvedValue({
+      siteId: "site_123",
+      siteName: "Test Site",
+      pageId: "page_home",
+      pageName: "Home",
+      mode: "designer",
+    });
+    adapterMocks.scanFonts.mockResolvedValue({
+      installed: [],
+      missing: [],
+      checkedFamilies: [],
+      source: "styles-and-variables",
+      message: "No required fonts.",
+    });
+    adapterMocks.createAsset.mockResolvedValue({
+      packageAssetKey: "hero",
+      fileName: "hero.png",
+      assetId: "asset_hero",
+      url: "https://uploads.example.com/hero.png",
+      mode: "designer",
+    });
+
+    const payloadWithEmptyCms = JSON.stringify({
+      type: "flowbridge/app-multipage-payload",
+      pageCount: 1,
+      generatedBy: "FlowBridge multi-page payload",
+      warnings: [],
+      cmsManifest: { collectionLists: [] },
+      pages: [
+        {
+          index: 0,
+          name: "Home",
+          slug: "home",
+          assets: [
+            {
+              key: "hero",
+              fileName: "hero.png",
+              url: "https://cdn.example.com/hero.png",
+              mimeType: "image/png",
+              required: true,
+              patchTargets: [],
+            },
+          ],
+          fonts: [],
+          xscpData: { type: "@webflow/XscpData", payload: { assets: [] } },
+          diagnostics: { payloadAssetsLength: 0, localImageRefs: [], crashHazards: [], pageIds: [] },
+          warnings: [],
+        },
+      ],
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Lane B/i }));
+
+    fireEvent.paste(screen.getByRole("button", { name: /Lane B payload paste target/i }), {
+      clipboardData: { getData: () => payloadWithEmptyCms },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 page\(s\) ready for install\./i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Prepare payload/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Copy for Webflow/i })).toBeInTheDocument();
+    });
+
+    // No CMS UI when collectionLists is empty
+    expect(screen.queryByText(/CMS Import/i)).toBeNull();
+  });
+
+  // --- End R4B CMS step tests ---
+
   it("blocks Lane A copy when required fonts are still missing", async () => {
     adapterMocks.getTargetContext.mockResolvedValue({
       siteId: "site_123",

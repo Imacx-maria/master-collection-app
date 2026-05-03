@@ -11,11 +11,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CmsImportPanel } from "@/components/CmsImportPanel";
 import { LaneBClipboardStep } from "@/components/LaneBClipboardStep";
 import { LaneBPagePlanStep } from "@/components/LaneBPagePlanStep";
 import { uploadPackageAssets, type AssetUploadProgress } from "@/lib/assets/upload";
 import { copyXscpDataToClipboard } from "@/lib/clipboard/webflowClipboard";
-import { parseConverterPayloadJson, type MultiPageConverterPayload, type SinglePageConverterPayload } from "@/lib/converter/parseConverterPayload";
+import { parseConverterPayloadJson, type CmsManifest, type MultiPageConverterPayload, type SinglePageConverterPayload } from "@/lib/converter/parseConverterPayload";
 import { buildInstallPlan } from "@/lib/install/buildInstallPlan";
 import { prepareInstallPayload } from "@/lib/install/prepareInstallPayload";
 import { resolveTargetPages, type ResolvedTargetPage } from "@/lib/install/resolveTargetPages";
@@ -31,12 +32,19 @@ const THEME_KEY = "master-collection-theme";
 
 type Theme = "light" | "dark";
 type EntryMode = "chooser" | "template" | "custom";
-type TemplateStepId = "paste" | "pages" | "copy";
+type TemplateStepId = "paste" | "pages" | "cms" | "copy";
 type CustomStepId = "paste" | "prepare" | "done";
 
-const TEMPLATE_STEPS: Array<{ id: TemplateStepId; label: string }> = [
+const TEMPLATE_STEPS_NO_CMS: Array<{ id: TemplateStepId; label: string }> = [
   { id: "paste", label: "Paste" },
   { id: "pages", label: "Pages" },
+  { id: "copy", label: "Copy" },
+];
+
+const TEMPLATE_STEPS_WITH_CMS: Array<{ id: TemplateStepId; label: string }> = [
+  { id: "paste", label: "Paste" },
+  { id: "pages", label: "Pages" },
+  { id: "cms", label: "CMS" },
   { id: "copy", label: "Copy" },
 ];
 
@@ -109,6 +117,7 @@ function TemplateInstallFlow({
 }) {
   const [step, setStep] = useState<TemplateStepId>("paste");
   const [laneBPlan, setLaneBPlan] = useState<AppInstallPlan | null>(null);
+  const [laneBCmsManifest, setLaneBCmsManifest] = useState<CmsManifest | null>(null);
   const [resolvedLaneBPages, setResolvedLaneBPages] = useState<ResolvedTargetPage[]>([]);
   const [preparedLaneBPage, setPreparedLaneBPage] = useState<ResolvedTargetPage | null>(null);
   const [laneBPackageData, setLaneBPackageData] = useState<MasterCollectionPackage | null>(null);
@@ -130,6 +139,7 @@ function TemplateInstallFlow({
     const plan = buildInstallPlan(payload);
     const resolvedPages = await resolveTargetPages(plan.pages, adapter);
     setLaneBPlan(plan);
+    setLaneBCmsManifest(payload.cmsManifest ?? null);
     setResolvedLaneBPages(resolvedPages);
     setPreparedLaneBPage(null);
     setLaneBPackageData(null);
@@ -175,7 +185,8 @@ function TemplateInstallFlow({
     setPreparedLaneBPage(resolved);
     setPatchedXscpData(prepared);
     setStatus(`Prepared ${resolved.source.displayName}. Copy the payload for the current Webflow page.`);
-    setStep("copy");
+    const hasCms = (laneBCmsManifest?.collectionLists.length ?? 0) > 0;
+    setStep(hasCms ? "cms" : "copy");
   }
 
   async function handleRecheckLaneBFonts() {
@@ -203,6 +214,7 @@ function TemplateInstallFlow({
   function handleRestart() {
     setStep("paste");
     setLaneBPlan(null);
+    setLaneBCmsManifest(null);
     setResolvedLaneBPages([]);
     setPreparedLaneBPage(null);
     setLaneBPackageData(null);
@@ -213,7 +225,9 @@ function TemplateInstallFlow({
     setError(null);
   }
 
-  const activeStepIndex = TEMPLATE_STEPS.findIndex((item) => item.id === step);
+  const hasCms = (laneBCmsManifest?.collectionLists.length ?? 0) > 0;
+  const templateSteps = hasCms ? TEMPLATE_STEPS_WITH_CMS : TEMPLATE_STEPS_NO_CMS;
+  const activeStepIndex = templateSteps.findIndex((item) => item.id === step);
   const canCopy = Boolean(
     isSinglePageXscpData(patchedXscpData)
     && (!laneBPackageData || areRequiredFontsReady(laneBPackageData, fontScan)),
@@ -226,7 +240,7 @@ function TemplateInstallFlow({
         description="Read the FlowBridge multi-page clipboard, resolve Webflow pages, then prepare and copy each page payload."
         onBack={onBackToChooser}
       />
-      <StepIndicator labels={TEMPLATE_STEPS.map((item) => item.label)} activeStepIndex={activeStepIndex} />
+      <StepIndicator labels={templateSteps.map((item) => item.label)} activeStepIndex={activeStepIndex} />
       {status ? <StatusMessage tone="success" message={status} /> : null}
       {error ? <StatusMessage tone="error" message={error} /> : null}
 
@@ -258,6 +272,18 @@ function TemplateInstallFlow({
             />
           </CardContent>
         </Card>
+      ) : null}
+
+      {step === "cms" && laneBTargetContext ? (
+        <div className="space-y-3">
+          <CmsImportPanel
+            siteId={laneBTargetContext.siteId}
+            siteName={laneBTargetContext.siteName}
+          />
+          <Button type="button" onClick={() => setStep("copy")}>
+            Continue to Copy
+          </Button>
+        </div>
       ) : null}
 
       {step === "copy" && patchedXscpData ? (
