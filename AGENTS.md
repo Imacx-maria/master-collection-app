@@ -1,5 +1,9 @@
 # AGENTS.md — Master Collection App
 
+## ⚠️ Universal — non-negotiable
+
+This Webflow Designer Extension is **universal** across all Master Collection templates. **Never** hardcode template-specific names, slugs, CSS class patterns, brand strings, or fallbacks tuned to one template. Stress tests like *Sra Colombia (CNB)* and *MNZ* are inputs to verify universality, not the targets. If a fix only works for the stress test, it's wrong. Lane B's CMS step, font checklist, asset upload, and patch logic must all be template-agnostic.
+
 ## Scope
 
 This folder is the Master Collection Webflow Designer Extension.
