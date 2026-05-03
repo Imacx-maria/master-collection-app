@@ -1,5 +1,9 @@
 # AGENTS.md — Master Collection App
 
+## ⚠️ Universal — non-negotiable
+
+This Webflow Designer Extension is **universal** across all Master Collection templates. **Never** hardcode template-specific names, slugs, CSS class patterns, brand strings, or fallbacks tuned to one template. Stress tests like *Sra Colombia (CNB)* and *MNZ* are inputs to verify universality, not the targets. If a fix only works for the stress test, it's wrong. Lane B's CMS step, font checklist, asset upload, and patch logic must all be template-agnostic.
+
 ## Scope
 
 This folder is the Master Collection Webflow Designer Extension.
@@ -31,21 +35,12 @@ If a doc is about shared product architecture, package flow, auth/payment/accoun
 
 Only create local docs here for app-specific implementation details after the app is scaffolded.
 
-## MVP Boundary
+## Current Scope
 
-First app MVP:
+The app runtime is live. Current product truth lives in parent docs — do not duplicate it here. See:
 
-- Webflow Designer Extension only
-- no Hybrid App/OAuth
-- no CMS automation
-- no custom-code installation
-- install code or mock code
-- package fetch/mock package
-- site/page detection with Designer API
-- font checklist
-- asset upload inside Webflow
-- XscpData patching
-- clipboard paste
+- `../docs/ARCHITECTURE.md § Current Implementation Notes` — two-lane install model (Lane A custom-site, Lane B template).
+- `../docs/knowledge/2026-05-03_lane-audit-findings.md § 1` — full lane definitions and the regression history.
 
 ## UI
 
@@ -53,14 +48,14 @@ Use the same shadcn/Flow-Goodies neutral light/dark baseline documented in `../A
 
 ## Commands
 
-No app runtime has been scaffolded yet.
-
-Expected future commands:
+Run from this folder (`app/`):
 
 ```bash
-npm run dev
-npm run build
-npm run test
-npm run lint
+npm install
+npm run dev        # vite --host 0.0.0.0 --port 1337
+npm run build      # tsc --noEmit (typecheck) + vite build
+npm run test       # vitest run
+npm run lint       # eslint src/**/*.{ts,tsx}
+npm run bundle     # build + Webflow extension bundle
 ```
 

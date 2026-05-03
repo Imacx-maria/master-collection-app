@@ -1,17 +1,12 @@
-import { demoPackage } from "@/mocks/demoPackage";
 import { parseMasterCollectionPackage } from "./schema";
 import type { MasterCollectionPackage } from "./types";
 
 export async function resolveInstallCode(code: string): Promise<MasterCollectionPackage> {
   const normalized = code.trim();
 
-  if (normalized.toUpperCase() === "DEMO") {
-    return parseMasterCollectionPackage(demoPackage);
-  }
-
   const apiBase = import.meta.env.VITE_MASTER_COLLECTION_API_BASE_URL;
   if (!apiBase) {
-    throw new Error("Use DEMO until the Master Collection package API is configured.");
+    throw new Error("Master Collection package API is not configured.");
   }
 
   const response = await fetch(`${apiBase.replace(/\/$/, "")}/api/install-code/resolve`, {
