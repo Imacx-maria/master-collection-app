@@ -28,7 +28,7 @@ export function LaneBClipboardStep({
     try {
       const parsed = parseConverterPayloadJson(trimmed);
       if (parsed.kind !== "multi") {
-        const message = "pasting invalid — paste a FlowBridge multi-page payload here.";
+        const message = "pasting invalid — this looks like a Lane A custom-site payload. Paste the FlowBridge Webflow-export payload from Lane B / Template here (works for any page count, 1 or many).";
         setDetectedPayload(null);
         setLocalMessage(message);
         setIsValid(false);
@@ -71,7 +71,7 @@ export function LaneBClipboardStep({
       >
         <div className="space-y-1">
           <div className="text-sm font-medium text-foreground">Paste payload here</div>
-          <div className="text-xs text-muted-foreground">Copy the FlowBridge multi-page payload from the converter, then press Ctrl+V here.</div>
+          <div className="text-xs text-muted-foreground">Copy the FlowBridge Webflow-export payload from Lane B / Template in the converter, then press Ctrl+V here.</div>
         </div>
       </div>
 
