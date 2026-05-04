@@ -8,7 +8,7 @@
     "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "test": "vitest run",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "bundle": "bun run build && webflow extension bundle --skip-update-check && bun scripts/create-webflow-zip.mjs",
+    "bundle": "npm run build && .\\node_modules\\.bin\\webflow.exe extension bundle --skip-update-check",
     "preview": "vite preview --host 0.0.0.0 --port 1337"
   },
   "dependencies": {

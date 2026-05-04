@@ -94,7 +94,7 @@ export function parseConverterPayload(value: unknown): ConverterPayload {
       kind: "single",
       type: "@webflow/XscpData",
       pageCount: 1,
-      name: stringOr(flowbridgeMeta?.name, "Clipboard page"),
+      name: sanitizeMasterCollectionDisplayName(flowbridgeMeta?.name ?? "Master Collection page payload", 1),
       warnings: normalizeWarnings(flowbridgeMeta?.warnings),
       xscpData: value,
       diagnostics: buildPayloadDiagnostics(value),
@@ -133,14 +133,23 @@ export function parseConverterPayload(value: unknown): ConverterPayload {
       kind: "multi",
       type: "flowbridge/app-multipage-payload",
       pageCount: parsedPages.length,
-      name: stringOr(value.generatedBy, "FlowBridge multi-page payload"),
+      name: sanitizeMasterCollectionDisplayName(optionalString(value.generatedBy), parsedPages.length),
       warnings: normalizeWarnings(value.warnings),
       pages: parsedPages,
       cmsManifest: parseCmsManifest(value.cmsManifest),
     };
   }
 
-  throw new Error("Clipboard JSON is not a supported FlowBridge converter payload.");
+  throw new Error("Clipboard JSON is not a supported Master Collection converter payload.");
+}
+
+export function sanitizeMasterCollectionDisplayName(name: string | undefined, pageCount: number): string {
+  if (!name || /flowbridge|minimal converter/i.test(name)) {
+    return pageCount === 1
+      ? "Master Collection page payload"
+      : "Master Collection multi-page payload";
+  }
+  return name;
 }
 
 export function buildPayloadDiagnostics(xscpData: unknown): PayloadDiagnostics {

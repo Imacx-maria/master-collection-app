@@ -16,6 +16,27 @@ The app installs packages inside Webflow. The site sells and serves access.
 
 No local AI_OS belongs here.
 
+## Architectural notes (updated 2026-05-04)
+
+### patch.ts — patchAttrRecord
+Creates `node.data.img = { id: assetId }` when the img binding is absent. This handles
+the ~17 images that escape CDN relink in the converter and therefore never had their
+`node.data.img` initialized by `applyCdnAssetRelinks`.
+
+### App.tsx — canCopy (Lane B)
+`canCopy = isSinglePageXscpData(patchedXscpData)` — nothing else.
+Fonts are informational warnings displayed in FontStatusPanel. They do NOT gate copy.
+`patchedXscpData` being null IS the correct hard blocker (it stays null if
+`preparePackageForWebflow` threw — e.g. because a required asset failed to upload).
+
+### App.tsx — setExtensionSize
+`adapter.setExtensionSize?.({ width: 750, height: 700 })` called on mount via useEffect.
+
+### preparePackageForWebflow.ts
+`assertWebflowPasteSafe` must NOT be called here. It throws before `setFontChecking(false)`
+runs, which freezes the font panel at "Checking fonts..." forever.
+Call `assertWebflowPasteSafe` in the UI layer (`handleCopy`) only.
+
 ⚠️ FINAL CHECK — These rules are non-negotiable:
 1. **Universal App.** No template-specific code. Sra Colombia (CNB) and MNZ are stress tests, not targets.
 2. This folder is only the Webflow Designer Extension. Shared docs and AI_OS live in the parent folder.

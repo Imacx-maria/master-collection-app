@@ -8,6 +8,7 @@ export interface MasterCollectionPackage {
   fonts: SimpleFontRequirement[];
   assets: SimpleAssetRequirement[];
   warnings?: SimplePackageWarning[];
+  blockedReason?: string;
 }
 
 export interface SimpleFontRequirement {
@@ -28,8 +29,9 @@ export interface SimpleAssetRequirement {
 }
 
 export interface SimpleAssetPatchTarget {
-  kind: "image-src" | "image-asset-id" | "background-url";
+  kind: "image-src" | "image-srcset" | "image-asset-id" | "background-url" | "text-url";
   path: Array<string | number>;
+  sourceUrl?: string;
 }
 
 export interface SimplePackageWarning {

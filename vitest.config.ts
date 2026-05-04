@@ -7,6 +7,9 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    host: "127.0.0.1",
+  },
   resolve: {
     alias: {
       "@": path.resolve(dirname, "src"),
@@ -14,6 +17,11 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    environmentOptions: {
+      jsdom: {
+        url: "http://127.0.0.1/",
+      },
+    },
     globals: true,
     setupFiles: ["src/test/setup.ts"],
   },
