@@ -23,6 +23,7 @@ export function FontStatusPanel({
   const unavailable = fontScan?.source === "unavailable";
   const allInstalled = requiredFonts.length > 0 && Boolean(fontScan) && !unavailable && missing.length === 0;
   const hasNoRequiredFonts = requiredFonts.length === 0;
+  const hasUndetectedFonts = requiredFonts.length > 0 && Boolean(fontScan) && missing.length > 0;
 
   let title = "Checking fonts...";
   let tone: "ok" | "warn" | "muted" = "muted";
@@ -30,10 +31,13 @@ export function FontStatusPanel({
     title = "No required fonts";
     tone = "ok";
   } else if (allInstalled) {
-    title = "Fonts installed";
+    title = "Fonts detected";
     tone = "ok";
+  } else if (hasUndetectedFonts) {
+    title = "Font check inconclusive";
+    tone = "warn";
   } else if (!checking) {
-    title = "Install required fonts";
+    title = "Review required fonts";
     tone = "warn";
   }
 
@@ -59,8 +63,8 @@ export function FontStatusPanel({
               {hasNoRequiredFonts
                 ? "This payload does not require custom fonts."
                 : allInstalled
-                  ? "All required font families were detected in this Webflow site."
-                  : "Install the missing fonts in Webflow, refresh the Designer, then re-check."}
+                  ? "All required font families were detected through the Designer API."
+                  : "Webflow may still have these installed and assigned; the Designer API scan can miss fonts that the right panel shows correctly."}
             </p>
           </div>
         </div>
@@ -86,7 +90,7 @@ export function FontStatusPanel({
               <div key={font.family} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                 <span className="font-medium">{formatFontRequirement(font)}</span>
                 <span className={cn("text-[10px] uppercase", isInstalled ? "text-emerald-600" : isMissing ? "text-amber-600" : "text-muted-foreground")}>
-                  {isInstalled ? "installed" : isMissing ? "missing" : "pending"}
+                  {isInstalled ? "detected" : isMissing ? "not detected" : "pending"}
                 </span>
               </div>
             );
@@ -96,7 +100,7 @@ export function FontStatusPanel({
 
       {showHelp ? (
         <div className="border border-border bg-background/70 p-3 text-[10px] leading-relaxed text-muted-foreground">
-          Open Webflow Site Settings, go to Fonts, upload or install the listed font family, weights, and styles, return to Designer, refresh the Designer/app page, then click Re-check fonts.
+          If Webflow's right typography panel shows these families assigned correctly, you can continue. Re-check asks the Designer API to scan styles, font variables, and the selected element again, but it may still miss fonts that Webflow itself can use.
         </div>
       ) : null}
     </section>

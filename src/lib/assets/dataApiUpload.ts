@@ -31,7 +31,28 @@ export async function uploadAssetWithDataApi({
   }
 
   const fileHash = await md5File(file);
-  const created = await createSiteAssetUpload(siteId, token, asset.fileName, fileHash);
+  let created: Awaited<ReturnType<typeof createSiteAssetUpload>>;
+  try {
+    created = await createSiteAssetUpload(siteId, token, asset.fileName, fileHash);
+  } catch (error) {
+    if (!isDuplicateAssetError(error)) {
+      throw error;
+    }
+
+    const refreshedAssets = await listSiteAssets(siteId, token);
+    const duplicate = findExistingSiteAsset(refreshedAssets, asset.fileName);
+    if (!duplicate) {
+      throw error;
+    }
+
+    return {
+      packageAssetKey: asset.key,
+      fileName: asset.fileName,
+      assetId: duplicate.id,
+      url: hostedUrlFromSiteAsset(duplicate),
+      mode: "existing",
+    };
+  }
   const uploadUrl = created.uploadUrl;
   const uploadDetails = created.uploadDetails ?? {};
 
@@ -71,6 +92,11 @@ export function findExistingSiteAsset(assets: WebflowSiteAssetSummary[], fileNam
       asset.cdnUrl,
     ].map(assetBasename).includes(target);
   }) ?? null;
+}
+
+function isDuplicateAssetError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /HTTP 409|duplicate|already exists/i.test(error.message);
 }
 
 function hostedUrlFromSiteAsset(asset: WebflowSiteAssetSummary): string | undefined {

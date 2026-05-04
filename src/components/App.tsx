@@ -300,6 +300,7 @@ function TemplateInstallFlow({
   const templateSteps = hasCms ? TEMPLATE_STEPS_WITH_CMS : TEMPLATE_STEPS_NO_CMS;
   const activeStepIndex = templateSteps.findIndex((item) => item.id === step);
   const canCopy = isSinglePageXscpData(patchedXscpData);
+  const copyBlockReason = canCopy ? null : describeFinalPayloadBlocker(patchedXscpData);
   const isPreparingLaneBPage = Boolean(step === "pages" && laneBPackageData && activePageIndex !== null && !patchedXscpData);
 
   return (
@@ -388,6 +389,7 @@ function TemplateInstallFlow({
           uploadedAssets={uploadedAssets}
           siteId={laneBTargetContext?.siteId ?? ""}
           canCopy={canCopy}
+          copyBlockReason={copyBlockReason}
           onRecheckFonts={() => runAction(handleRecheckLaneBFonts)}
           onCopy={() => runAction(handleCopy)}
           onBack={() => setStep("pages")}
@@ -550,13 +552,18 @@ function CustomSiteInstallFlow({
 
   const activeStepIndex = CUSTOM_STEPS.findIndex((item) => item.id === step);
   const requiredAssetsUploaded = !packageData || areRequiredAssetsReady(packageData, uploadedAssets);
-  const fontsConfirmed = !packageData || areRequiredFontsReady(packageData, fontScan);
   const canCopy = Boolean(
     isSinglePageXscpData(patchedXscpData)
     && requiredAssetsUploaded
-    && fontsConfirmed
     && !packageData?.blockedReason,
   );
+  const copyBlockReason = canCopy
+    ? null
+    : describeCustomCopyBlocker({
+      packageData,
+      patchedXscpData,
+      uploadedAssets,
+    });
 
   return (
     <section className="space-y-3">
@@ -587,6 +594,7 @@ function CustomSiteInstallFlow({
           uploadProgress={uploadProgress}
           uploadedAssets={uploadedAssets}
           canCopy={canCopy}
+          copyBlockReason={copyBlockReason}
           onRecheckFonts={() => runAction(handleRecheckFonts)}
           onCopy={() => runAction(handleCopy)}
           onBack={() => setStep("paste")}
@@ -811,6 +819,7 @@ function LaneBCopyStep({
   uploadProgress,
   uploadedAssets,
   canCopy,
+  copyBlockReason,
   onRecheckFonts,
   onCopy,
   onBack,
@@ -822,6 +831,7 @@ function LaneBCopyStep({
   uploadedAssets: UploadedWebflowAsset[];
   siteId: string;
   canCopy: boolean;
+  copyBlockReason: string | null;
   onRecheckFonts: () => void;
   onCopy: () => void;
   onBack: () => void;
@@ -849,6 +859,11 @@ function LaneBCopyStep({
           </>
         ) : null}
         <p className="text-xs text-muted-foreground">Copy the package payload, click the Webflow canvas, then paste.</p>
+        {!canCopy && copyBlockReason ? (
+          <div className="border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
+            {copyBlockReason}
+          </div>
+        ) : null}
         <div className="flex gap-2">
           <Button type="button" onClick={onCopy} disabled={!canCopy}>
             <Copy className="h-3.5 w-3.5" />
@@ -910,6 +925,7 @@ function CustomPrepareStep({
   uploadProgress,
   uploadedAssets,
   canCopy,
+  copyBlockReason,
   onRecheckFonts,
   onCopy,
   onBack,
@@ -921,6 +937,7 @@ function CustomPrepareStep({
   uploadProgress: Record<string, AssetUploadProgress>;
   uploadedAssets: UploadedWebflowAsset[];
   canCopy: boolean;
+  copyBlockReason: string | null;
   onRecheckFonts: () => void;
   onCopy: () => void;
   onBack: () => void;
@@ -957,6 +974,12 @@ function CustomPrepareStep({
             {warning.message}
           </div>
         ))}
+
+        {!canCopy && copyBlockReason ? (
+          <div className="border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
+            {copyBlockReason}
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={onCopy} disabled={!canCopy}>
@@ -1064,6 +1087,46 @@ function areRequiredAssetsReady(
   return packageData.assets
     .filter((asset) => asset.required)
     .every((asset) => uploadedKeys.has(asset.key));
+}
+
+function describeFinalPayloadBlocker(patchedXscpData: unknown | null): string {
+  if (!patchedXscpData) {
+    return "Copy is waiting for the prepared Webflow payload.";
+  }
+
+  if (!isRecord(patchedXscpData)) {
+    return "Copy is blocked because the prepared payload is not an object.";
+  }
+
+  return `Copy is blocked because the prepared payload type is "${String(patchedXscpData.type ?? "missing")}", not "@webflow/XscpData".`;
+}
+
+function describeCustomCopyBlocker({
+  packageData,
+  patchedXscpData,
+  uploadedAssets,
+}: {
+  packageData: MasterCollectionPackage | null;
+  patchedXscpData: unknown | null;
+  uploadedAssets: UploadedWebflowAsset[];
+}): string {
+  if (!packageData) {
+    return "Copy is waiting for a valid package payload.";
+  }
+
+  if (!isSinglePageXscpData(patchedXscpData)) {
+    return describeFinalPayloadBlocker(patchedXscpData);
+  }
+
+  if (!areRequiredAssetsReady(packageData, uploadedAssets)) {
+    return "Copy is waiting for all required Webflow images to finish preparing.";
+  }
+
+  if (packageData.blockedReason) {
+    return packageData.blockedReason;
+  }
+
+  return "Copy is blocked by an unknown preparation state.";
 }
 
 function areRequiredFontsReady(

@@ -310,7 +310,7 @@ describe("App lane flows", () => {
     expect(screen.queryByRole("button", { name: /Prepare payload/i })).toBeNull();
     expect(screen.queryByLabelText(/Webflow Site API Token/i)).toBeNull();
     expect(screen.getByText(/All images ready in Webflow/i)).toBeInTheDocument();
-    expect(screen.getByText(/Fonts installed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Fonts detected/i)).toBeInTheDocument();
     expect(screen.getByText(/Detected Master Collection multi-page payload with 1 page\(s\)\./i)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/FlowBridge|FlowBridge Minimal Converter 4\.1/);
   });
@@ -377,14 +377,37 @@ describe("App lane flows", () => {
     expect(screen.queryByRole("button", { name: /Paste to Webflow/i })).toBeNull();
   });
 
-  it("enables Copy to Webflow button even when required fonts are missing", async () => {
+  it("enables Lane A copy even when required fonts are not detected", async () => {
+    adapterMocks.scanFonts.mockResolvedValue({
+      installed: [],
+      missing: [{ family: "Fixture Sans", weights: [400], styles: ["normal"], required: true }],
+      checkedFamilies: ["Fixture Sans"],
+      source: "styles-and-variables" as const,
+      message: "Some fonts were not detected.",
+    });
+
+    chooseLaneA();
+    pasteLaneAPayload(laneAPayload({
+      fonts: [{ family: "Fixture Sans", weights: [400], styles: ["normal"], required: true }],
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Proceed/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Font check inconclusive/i)).toBeInTheDocument();
+      expect(screen.getByText(/not detected/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+    });
+  });
+
+  it("enables Copy to Webflow button even when required fonts are not detected", async () => {
     window.localStorage.setItem(WEBFLOW_SITE_TOKEN_KEY, "wf-token");
     adapterMocks.scanFonts.mockResolvedValue({
       installed: [],
-      missing: [{ family: "Ppmori", weights: [400], styles: ["normal"], required: true }],
-      checkedFamilies: ["Ppmori"],
+      missing: [{ family: "Fixture Sans", weights: [400], styles: ["normal"], required: true }],
+      checkedFamilies: ["Fixture Sans"],
       source: "styles-and-variables" as const,
-      message: "Missing fonts detected.",
+      message: "Some fonts were not detected.",
     });
 
     chooseLaneB();
@@ -400,7 +423,7 @@ describe("App lane flows", () => {
           name: "Home",
           slug: "home",
           assets: [],
-          fonts: [{ family: "Ppmori", weights: [400], styles: ["normal"], required: true }],
+          fonts: [{ family: "Fixture Sans", weights: [400], styles: ["normal"], required: true }],
           xscpData: { type: "@webflow/XscpData", payload: { assets: [], nodes: [] } },
           diagnostics: { payloadAssetsLength: 0, localImageRefs: [], crashHazards: [], pageIds: [] },
           warnings: [],
@@ -416,7 +439,7 @@ describe("App lane flows", () => {
     });
   });
 
-  it("shows missing font rows, manual info, and re-check without an Install in Webflow button", async () => {
+  it("shows not-detected font rows, manual info, and re-check without an Install in Webflow button", async () => {
     window.localStorage.setItem(WEBFLOW_SITE_TOKEN_KEY, "wf-token");
     adapterMocks.scanFonts
       .mockResolvedValueOnce({
@@ -439,18 +462,18 @@ describe("App lane flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Install required fonts/i)).toBeInTheDocument();
+      expect(screen.getByText(/Font check inconclusive/i)).toBeInTheDocument();
       expect(screen.getByText(/Sora - weights 400, 700 - styles normal/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
     });
 
     expect(screen.queryByRole("button", { name: /Install in Webflow/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Font install instructions/i }));
-    expect(screen.getByText(/refresh the Designer\/app page/i)).toBeInTheDocument();
+    expect(screen.getByText(/right typography panel shows these families assigned correctly/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Re-check fonts/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Fonts installed/i)).toBeInTheDocument();
+      expect(screen.getByText("Fonts detected")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
     });
   });

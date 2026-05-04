@@ -19,6 +19,16 @@ type WebflowPage = {
   setSlug?: (slug: string) => Promise<null>;
 };
 
+type WebflowStyle = {
+  getName?: () => Promise<string>;
+  getProperties?: (options?: unknown) => Promise<Record<string, unknown>>;
+  getProperty?: (property: string, options?: unknown) => Promise<unknown>;
+};
+
+type WebflowElementWithStyles = {
+  getStyles?: () => Promise<Array<WebflowStyle | null> | null>;
+};
+
 type WebflowGlobal = {
   setExtensionSize?: (size: ExtensionSize) => Promise<null>;
   getSiteInfo?: () => Promise<{
@@ -44,11 +54,9 @@ type WebflowGlobal = {
   }>;
   getAllAssets?: () => Promise<WebflowAssetReference[]>;
   getAllStyles?: () => Promise<
-    Array<{
-      getName?: () => Promise<string>;
-      getProperties?: (options?: unknown) => Promise<Record<string, unknown>>;
-    }>
+    Array<WebflowStyle>
   >;
+  getSelectedElement?: () => Promise<WebflowElementWithStyles | null>;
   getAllVariableCollections?: () => Promise<
     Array<{
       getAllVariables?: () => Promise<
@@ -107,6 +115,23 @@ function parseFontFamily(value: string): string {
   return value.split(",")[0]?.trim().replace(/^['"]|['"]$/g, "") ?? "";
 }
 
+async function resolveFontValue(value: unknown): Promise<string[]> {
+  if (typeof value === "string" && value.trim()) {
+    return [parseFontFamily(value)];
+  }
+
+  if (value && typeof value === "object" && "get" in value) {
+    try {
+      const resolved = await (value as { get?: () => Promise<unknown> }).get?.();
+      return resolveFontValue(resolved);
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
 function fuzzyFontKey(name: string): string {
   let normalized = name.toLowerCase().trim().replace(/^['"]|['"]$/g, "");
 
@@ -120,45 +145,62 @@ function fuzzyFontKey(name: string): string {
   return normalized.replace(/[\s\-_]/g, "");
 }
 
-async function collectStyleFonts(wf: WebflowGlobal, detected: Set<string>) {
-  if (!wf.getAllStyles) return;
-
-  const styles = await wf.getAllStyles();
+async function collectFontsFromStyles(styles: WebflowStyle[], detected: Set<string>) {
   const batchSize = 5;
 
   for (let index = 0; index < styles.length; index += batchSize) {
     const batch = styles.slice(index, index + batchSize);
-    const fonts = await Promise.all(
+    const fontGroups = await Promise.all(
       batch.map(async (style) => {
-        if (!style.getProperties) return null;
-
+        const found: string[] = [];
         try {
-          const props = await style.getProperties({
-            breakpoint: "main",
-            pseudo: "noPseudo",
-          });
-          const rawFont = props["font-family"];
-
-          if (typeof rawFont === "string") {
-            return parseFontFamily(rawFont);
-          }
-
-          if (rawFont && typeof rawFont === "object" && "get" in rawFont) {
-            const resolved = await (rawFont as { get?: () => Promise<unknown> }).get?.();
-            return typeof resolved === "string" ? parseFontFamily(resolved) : null;
+          if (style.getProperties) {
+            const props = await style.getProperties({
+              breakpoint: "main",
+              pseudo: "noPseudo",
+            });
+            found.push(...await resolveFontValue(props["font-family"]));
           }
         } catch {
-          return null;
+          // Continue with getProperty below.
         }
 
-        return null;
+        try {
+          if (style.getProperty) {
+            found.push(...await resolveFontValue(await style.getProperty("font-family", {
+              breakpoint: "main",
+              pseudo: "noPseudo",
+            })));
+          }
+        } catch {
+          // Some styles cannot read every property; keep scanning the rest.
+        }
+
+        return found;
       }),
     );
 
-    for (const font of fonts) {
-      if (font) detected.add(font);
+    for (const fonts of fontGroups) {
+      for (const font of fonts) {
+        if (font) detected.add(font);
+      }
     }
   }
+}
+
+async function collectStyleFonts(wf: WebflowGlobal, detected: Set<string>) {
+  if (!wf.getAllStyles) return;
+  await collectFontsFromStyles(await wf.getAllStyles(), detected);
+}
+
+async function collectSelectedElementFonts(wf: WebflowGlobal, detected: Set<string>) {
+  if (!wf.getSelectedElement) return;
+
+  const selected = await wf.getSelectedElement();
+  if (!selected?.getStyles) return;
+
+  const styles = (await selected.getStyles())?.filter((style): style is WebflowStyle => Boolean(style)) ?? [];
+  await collectFontsFromStyles(styles, detected);
 }
 
 async function collectFontVariables(wf: WebflowGlobal, detected: Set<string>) {
@@ -341,6 +383,7 @@ export function createWebflowAdapter(): WebflowAdapter {
       try {
         await Promise.all([
           collectStyleFonts(wf, detectedFamilies),
+          collectSelectedElementFonts(wf, detectedFamilies),
           collectFontVariables(wf, detectedFamilies),
         ]);
       } catch {
@@ -364,7 +407,7 @@ export function createWebflowAdapter(): WebflowAdapter {
         source: "styles-and-variables",
         message:
           missing.length > 0
-            ? "Some required fonts were not detected in site styles or font variables."
+            ? "Some required fonts were not detected through the limited Designer API font scan."
             : "Required fonts were detected in this site.",
       };
     },

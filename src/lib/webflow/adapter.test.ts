@@ -119,4 +119,26 @@ describe("createWebflowAdapter page creation", () => {
     });
     expect(createAsset).toHaveBeenCalledTimes(1);
   });
+
+  it("detects fonts from the selected element styles during a re-check", async () => {
+    vi.stubGlobal("webflow", {
+      getAllStyles: vi.fn().mockResolvedValue([]),
+      getSelectedElement: vi.fn().mockResolvedValue({
+        getStyles: vi.fn().mockResolvedValue([
+          {
+            getProperties: vi.fn().mockResolvedValue({}),
+            getProperty: vi.fn().mockResolvedValue("Fixture Sans"),
+          },
+        ]),
+      }),
+    });
+
+    await expect(createWebflowAdapter().scanFonts([
+      { family: "Fixture Sans Extra Bold", weights: [700], styles: ["normal"], required: true },
+    ])).resolves.toMatchObject({
+      installed: [expect.objectContaining({ family: "Fixture Sans Extra Bold" })],
+      missing: [],
+      checkedFamilies: ["Fixture Sans"],
+    });
+  });
 });

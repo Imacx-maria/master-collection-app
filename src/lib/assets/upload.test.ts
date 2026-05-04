@@ -123,6 +123,33 @@ describe("uploadPackageAssets", () => {
     expect(cmsMocks.createSiteAssetUpload).not.toHaveBeenCalled();
   });
 
+  it("reuses a duplicate Webflow asset when create returns a duplicate response", async () => {
+    cmsMocks.listSiteAssets
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "asset_existing_after_conflict",
+          originalFileName: "hero.png",
+          hostedUrl: "https://uploads.webflow.com/hero.png",
+        },
+      ]);
+    cmsMocks.createSiteAssetUpload.mockRejectedValue(new Error("Create asset failed (HTTP 409): duplicate asset already exists"));
+
+    const uploaded = await uploadPackageAssets({
+      packageData: basePackage,
+      adapter: { isAvailable: vi.fn().mockReturnValue(true), createAsset: vi.fn() } as any,
+      siteId: "site_123",
+      token: "wf-token",
+    });
+
+    expect(uploaded).toEqual([
+      expect.objectContaining({
+        assetId: "asset_existing_after_conflict",
+        mode: "existing",
+      }),
+    ]);
+  });
+
   it("creates a Data API asset with fileName and MD5 fileHash, then uploads the binary", async () => {
     const uploaded = await uploadPackageAssets({
       packageData: {
