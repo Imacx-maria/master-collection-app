@@ -159,4 +159,21 @@ describe("webflow crash audit invariants", () => {
       }),
     ).toThrow(/pageId placeholder remains/);
   });
+
+  it("blocks final clipboard payloads that have more than one XscpData root node", () => {
+    const payload = {
+      type: "@webflow/XscpData",
+      payload: {
+        assets: [],
+        nodes: [
+          { _id: "root_a", type: "Block", children: [] },
+          { _id: "root_b", type: "HtmlEmbed", children: [] },
+        ],
+        styles: [],
+      },
+    };
+
+    expect(collectWebflowPasteCrashHazards(payload)).toContain("payload.nodes has 2 root nodes");
+    expect(() => assertWebflowPasteSafe(payload)).toThrow(/payload\.nodes has 2 root nodes/);
+  });
 });

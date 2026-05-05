@@ -7,6 +7,11 @@ export function collectCrashHazardsFromXscpData(xscpData: unknown): string[] {
     hazards.add("payload.assets[] populated");
   }
 
+  const rootCount = countXscpRoots(payload.nodes);
+  if (rootCount > 1) {
+    hazards.add(`payload.nodes has ${rootCount} root nodes`);
+  }
+
   const ix3 = isRecord(payload.ix3) ? payload.ix3 : null;
   for (const collectionKey of ["interactions", "timelines"] as const) {
     const collection = Array.isArray(ix3?.[collectionKey]) ? ix3[collectionKey] : [];
@@ -25,6 +30,28 @@ export function collectCrashHazardsFromXscpData(xscpData: unknown): string[] {
   });
 
   return Array.from(hazards).sort();
+}
+
+function countXscpRoots(nodes: unknown): number {
+  if (!Array.isArray(nodes)) return 0;
+  const referenced = new Set<string>();
+  const ids = new Set<string>();
+
+  for (const node of nodes) {
+    if (!isRecord(node)) continue;
+    if (typeof node._id === "string") ids.add(node._id);
+    const children = Array.isArray(node.children) ? node.children : [];
+    for (const childId of children) {
+      if (typeof childId === "string") referenced.add(childId);
+    }
+  }
+
+  if (ids.size === 0) return 0;
+  let roots = 0;
+  for (const id of ids) {
+    if (!referenced.has(id)) roots += 1;
+  }
+  return roots;
 }
 
 function walk(value: unknown, visit: (value: unknown) => void) {

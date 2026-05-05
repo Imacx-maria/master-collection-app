@@ -27,4 +27,31 @@ describe("prepareInstallPayload", () => {
       }),
     ).toThrow(/Unsafe Webflow paste payload/i);
   });
+
+  it("throws before copy when the patched payload has more than one root node", () => {
+    expect(() =>
+      prepareInstallPayload({
+        packageData: {
+          schemaVersion: "master-collection-package@1",
+          packageId: "pkg",
+          name: "Multi Root",
+          version: "1.0.0",
+          fonts: [],
+          assets: [],
+          xscpData: {
+            type: "@webflow/XscpData",
+            payload: {
+              assets: [],
+              nodes: [
+                { _id: "root_a", type: "Block", children: [] },
+                { _id: "root_b", type: "HtmlEmbed", children: [] },
+              ],
+            },
+          },
+        },
+        targetPageId: "page_123",
+        uploadedAssets: [],
+      }),
+    ).toThrow(/payload\.nodes has 2 root nodes/i);
+  });
 });

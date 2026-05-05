@@ -30,4 +30,19 @@ describe("collectCrashHazardsFromXscpData", () => {
       "payload.assets[] populated",
     ]);
   });
+
+  it("flags payloads with more than one XscpData root node before Webflow paste can crash", () => {
+    const hazards = collectCrashHazardsFromXscpData({
+      type: "@webflow/XscpData",
+      payload: {
+        assets: [],
+        nodes: [
+          { _id: "root_a", type: "Block", children: [] },
+          { _id: "root_b", type: "HtmlEmbed", children: [] },
+        ],
+      },
+    });
+
+    expect(hazards).toContain("payload.nodes has 2 root nodes");
+  });
 });

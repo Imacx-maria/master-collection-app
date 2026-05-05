@@ -21,6 +21,11 @@ export function collectWebflowPasteCrashHazards(xscpData: unknown): string[] {
     add("payload.assets[] populated");
   }
 
+  const rootCount = countXscpRoots(payload.nodes);
+  if (rootCount > 1) {
+    add(`payload.nodes has ${rootCount} root nodes`);
+  }
+
   const localImageRefs = collectLocalImageRefs(payload);
   if (localImageRefs.length > 0) {
     add(`local image URL(s) remain: ${summarizeRefs(localImageRefs)}`);
@@ -146,6 +151,28 @@ function collectIx3ShapeHazards(ix3: unknown): string[] {
   });
 
   return hazards;
+}
+
+function countXscpRoots(nodes: unknown): number {
+  if (!Array.isArray(nodes)) return 0;
+  const referenced = new Set<string>();
+  const ids = new Set<string>();
+
+  for (const node of nodes) {
+    if (!isRecord(node)) continue;
+    if (typeof node._id === "string") ids.add(node._id);
+    const children = Array.isArray(node.children) ? node.children : [];
+    for (const childId of children) {
+      if (typeof childId === "string") referenced.add(childId);
+    }
+  }
+
+  if (ids.size === 0) return 0;
+  let roots = 0;
+  for (const id of ids) {
+    if (!referenced.has(id)) roots += 1;
+  }
+  return roots;
 }
 
 function collectLocalImageRefs(payload: Record<string, unknown>): string[] {

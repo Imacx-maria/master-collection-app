@@ -315,4 +315,66 @@ describe("patchXscpData", () => {
     expect(patched.payload.styles[0].variants.main_hover.styleLess).toContain("https://uploads.webflow.com/Arrow-Small.svg");
     expect(patched.payload.assets).toEqual([]);
   });
+
+  it("preserves converter visual-parity classes, CSS, and embeds while patching app-owned fields", () => {
+    const packageData: MasterCollectionPackage = {
+      ...basePackage,
+      xscpData: {
+        type: "@webflow/XscpData",
+        payload: {
+          assets: [{ id: "old-asset" }],
+          nodes: [
+            {
+              type: "Block",
+              classes: ["loading-screen", "fb-designer-hidden"],
+              data: {},
+            },
+            {
+              type: "HtmlEmbed",
+              v: "<script>document.querySelectorAll('.fb-designer-hidden').forEach((node) => node.classList.remove('fb-designer-hidden'));</script>",
+            },
+          ],
+          styles: [
+            {
+              _id: "fb-designer-hidden",
+              name: "fb-designer-hidden",
+              styleLess: "display: none !important;",
+            },
+            {
+              _id: "hero-parent",
+              name: "hero-parent",
+              styleLess: "width: 100%; height: 100vh;",
+            },
+          ],
+          ix3: {
+            interactions: [
+              {
+                id: "page-load",
+                pageId: "__MASTER_COLLECTION_CURRENT_PAGE_ID__",
+                scope: {
+                  value: ["source-page"],
+                },
+              },
+            ],
+            timelines: [{ id: "timeline", pageId: "source-page" }],
+          },
+        },
+      },
+      assets: [],
+    };
+
+    const patched = patchXscpData({
+      packageData,
+      targetPageId: "page_123",
+      uploadedAssets: [],
+    }) as any;
+
+    expect(patched.payload.assets).toEqual([]);
+    expect(patched.payload.nodes[0].classes).toEqual(["loading-screen", "fb-designer-hidden"]);
+    expect(patched.payload.nodes[1].v).toContain("querySelectorAll('.fb-designer-hidden')");
+    expect(patched.payload.styles).toEqual((packageData.xscpData as any).payload.styles);
+    expect(patched.payload.ix3.interactions[0].pageId).toBe("page_123");
+    expect(patched.payload.ix3.interactions[0].scope.value).toEqual(["page_123"]);
+    expect(patched.payload.ix3.timelines[0].pageId).toBe("page_123");
+  });
 });
