@@ -94,6 +94,66 @@ const laneBTwoPagePayload = JSON.stringify({
   ],
 });
 
+const laneBUnsafePastePayload = JSON.stringify({
+  type: "flowbridge/app-multipage-payload",
+  pageCount: 1,
+  generatedBy: "FlowBridge Minimal Converter 4.1",
+  warnings: [],
+  pages: [
+    {
+      index: 0,
+      name: "Home",
+      slug: "home",
+      assets: [],
+      fonts: [],
+      xscpData: {
+        type: "@webflow/XscpData",
+        payload: {
+          assets: [],
+          nodes: [],
+          ix3: {
+            interactions: [],
+            timelines: [],
+            actionLists: [],
+            events: [],
+            selectorGuids: ["source-only-guid"],
+          },
+        },
+      },
+      diagnostics: { payloadAssetsLength: 0, localImageRefs: [], crashHazards: [], pageIds: [] },
+      warnings: [],
+    },
+  ],
+});
+
+const laneBMultiRootPayload = JSON.stringify({
+  type: "flowbridge/app-multipage-payload",
+  pageCount: 1,
+  generatedBy: "FlowBridge Minimal Converter 4.1",
+  warnings: [],
+  pages: [
+    {
+      index: 0,
+      name: "Home",
+      slug: "home",
+      assets: [],
+      fonts: [],
+      xscpData: {
+        type: "@webflow/XscpData",
+        payload: {
+          assets: [],
+          nodes: [
+            { _id: "root-one", type: "Section", children: [], data: {} },
+            { _id: "root-two", type: "Section", children: [], data: {} },
+          ],
+        },
+      },
+      diagnostics: { payloadAssetsLength: 0, localImageRefs: [], crashHazards: [], pageIds: [] },
+      warnings: [],
+    },
+  ],
+});
+
 function laneBWithCmsPayload() {
   return JSON.stringify({
     type: "flowbridge/app-multipage-payload",
@@ -131,6 +191,7 @@ function laneAPayload(options: {
   assets?: unknown[];
   fonts?: unknown[];
   blockedReason?: string;
+  payload?: unknown;
 } = {}) {
   return JSON.stringify({
     type: "@webflow/XscpData",
@@ -142,7 +203,19 @@ function laneAPayload(options: {
       assets: options.assets ?? [],
       blockedReason: options.blockedReason,
     },
-    payload: { assets: [], nodes: [] },
+    payload: options.payload ?? { assets: [], nodes: [] },
+  });
+}
+
+function laneAMultiRootPayload() {
+  return laneAPayload({
+    payload: {
+      assets: [],
+      nodes: [
+        { _id: "root-one", type: "Section", children: [], data: {} },
+        { _id: "root-two", type: "Section", children: [], data: {} },
+      ],
+    },
   });
 }
 
@@ -377,7 +450,7 @@ describe("App lane flows", () => {
     expect(screen.queryByRole("button", { name: /Paste to Webflow/i })).toBeNull();
   });
 
-  it("enables Lane A copy even when required fonts are not detected", async () => {
+  it("blocks Lane A copy when required fonts are not detected", async () => {
     adapterMocks.scanFonts.mockResolvedValue({
       installed: [],
       missing: [{ family: "Fixture Sans", weights: [400], styles: ["normal"], required: true }],
@@ -396,11 +469,12 @@ describe("App lane flows", () => {
     await waitFor(() => {
       expect(screen.getByText(/Font check inconclusive/i)).toBeInTheDocument();
       expect(screen.getByText(/not detected/i)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeDisabled();
+      expect(screen.getByText(/Copy is waiting for required Webflow fonts/i)).toBeInTheDocument();
     });
   });
 
-  it("enables Copy to Webflow button even when required fonts are not detected", async () => {
+  it("allows Lane B copy when required fonts are not detected because fonts are informational", async () => {
     window.localStorage.setItem(WEBFLOW_SITE_TOKEN_KEY, "wf-token");
     adapterMocks.scanFonts.mockResolvedValue({
       installed: [],
@@ -435,7 +509,9 @@ describe("App lane flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+      expect(screen.getByText(/Font check inconclusive/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Copy is waiting for required Webflow fonts/i)).toBeNull();
     });
   });
 
@@ -510,6 +586,50 @@ describe("App lane flows", () => {
       }));
       expect(screen.getByText(/Copied to Webflow clipboard/i)).toBeInTheDocument();
     });
+  });
+
+  it("blocks Lane B copy when the final Webflow paste audit finds source-only IX data", async () => {
+    window.localStorage.setItem(WEBFLOW_SITE_TOKEN_KEY, "wf-token");
+    chooseLaneB();
+    pasteLaneBPayload(laneBUnsafePastePayload);
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Copy to Webflow/i }));
+
+    await waitFor(() => {
+      expect(clipboardMocks.copyXscpDataToClipboard).not.toHaveBeenCalled();
+      expect(screen.getByText(/Final Webflow paste payload is blocked: selectorGuids remain in paste payload/i)).toBeInTheDocument();
+    });
+  });
+
+  it("blocks Lane B copy when the final Webflow paste audit finds multiple XscpData roots", async () => {
+    window.localStorage.setItem(WEBFLOW_SITE_TOKEN_KEY, "wf-token");
+    chooseLaneB();
+    pasteLaneBPayload(laneBMultiRootPayload);
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Unsafe Webflow paste payload: payload\.nodes has 2 root nodes/i)).toBeInTheDocument();
+      expect(clipboardMocks.copyXscpDataToClipboard).not.toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("button", { name: /Copy to Webflow/i })).toBeNull();
+  });
+
+  it("blocks Lane A copy when the final Webflow paste audit finds multiple XscpData roots", async () => {
+    window.localStorage.setItem(WEBFLOW_SITE_TOKEN_KEY, "wf-token");
+    chooseLaneA();
+    pasteLaneAPayload(laneAMultiRootPayload());
+    fireEvent.click(screen.getByRole("button", { name: /Proceed/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Unsafe Webflow paste payload: payload\.nodes has 2 root nodes/i)).toBeInTheDocument();
+      expect(clipboardMocks.copyXscpDataToClipboard).not.toHaveBeenCalled();
+    });
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeDisabled();
   });
 
   it("keeps CMS absent payloads on the copy step after auto-preparation", async () => {

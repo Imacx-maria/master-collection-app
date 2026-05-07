@@ -132,17 +132,31 @@ async function resolveFontValue(value: unknown): Promise<string[]> {
   return [];
 }
 
-function fuzzyFontKey(name: string): string {
-  let normalized = name.toLowerCase().trim().replace(/^['"]|['"]$/g, "");
+function compactFontKey(value: string): string {
+  return value.toLowerCase().trim().replace(/^['"]|['"]$/g, "").replace(/[\s\-_]/g, "");
+}
 
-  for (const suffix of WEIGHT_SUFFIXES) {
-    if (normalized.endsWith(suffix)) {
-      normalized = normalized.slice(0, -suffix.length);
-      break;
+const WEIGHT_SUFFIX_KEYS = WEIGHT_SUFFIXES
+  .map(compactFontKey)
+  .filter(Boolean)
+  .sort((a, b) => b.length - a.length);
+
+function fuzzyFontKey(name: string): string {
+  let normalized = compactFontKey(name);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const suffix of WEIGHT_SUFFIX_KEYS) {
+      if (normalized.length > suffix.length && normalized.endsWith(suffix)) {
+        normalized = normalized.slice(0, -suffix.length);
+        changed = true;
+        break;
+      }
     }
   }
 
-  return normalized.replace(/[\s\-_]/g, "");
+  return normalized;
 }
 
 async function collectFontsFromStyles(styles: WebflowStyle[], detected: Set<string>) {

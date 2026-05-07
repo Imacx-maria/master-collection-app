@@ -141,4 +141,31 @@ describe("createWebflowAdapter page creation", () => {
       checkedFamilies: ["Fixture Sans"],
     });
   });
+
+  it("matches installed font families after removing multiple weight and style suffixes", async () => {
+    vi.stubGlobal("webflow", {
+      getAllStyles: vi.fn().mockResolvedValue([
+        {
+          getProperties: vi.fn().mockResolvedValue({
+            "font-family": "PPEditorialNew Ultralight Italic",
+          }),
+          getProperty: vi.fn().mockResolvedValue("PP Neue Bit Bold"),
+        },
+      ]),
+      getSelectedElement: vi.fn().mockResolvedValue(null),
+      getAllVariableCollections: vi.fn().mockResolvedValue([]),
+    });
+
+    await expect(createWebflowAdapter().scanFonts([
+      { family: "Ppeditorialnew", weights: [200], styles: ["italic"], required: true },
+      { family: "Ppneuebit", weights: [700], styles: ["normal"], required: true },
+    ])).resolves.toMatchObject({
+      installed: [
+        expect.objectContaining({ family: "Ppeditorialnew" }),
+        expect.objectContaining({ family: "Ppneuebit" }),
+      ],
+      missing: [],
+      checkedFamilies: ["PP Neue Bit Bold", "PPEditorialNew Ultralight Italic"],
+    });
+  });
 });

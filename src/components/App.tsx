@@ -264,6 +264,7 @@ function TemplateInstallFlow({
   async function handleCopy() {
     if (!patchedXscpData) return;
     assertSinglePageXscpData(patchedXscpData);
+    assertWebflowPasteSafe(patchedXscpData);
     setError(null);
     setStatus("Copying package payload...");
     const copyResult = await copyXscpDataToClipboard(patchedXscpData);
@@ -299,8 +300,14 @@ function TemplateInstallFlow({
   const hasCms = (laneBCmsManifest?.collectionLists.length ?? 0) > 0;
   const templateSteps = hasCms ? TEMPLATE_STEPS_WITH_CMS : TEMPLATE_STEPS_NO_CMS;
   const activeStepIndex = templateSteps.findIndex((item) => item.id === step);
-  const canCopy = isSinglePageXscpData(patchedXscpData);
-  const copyBlockReason = canCopy ? null : describeFinalPayloadBlocker(patchedXscpData);
+  const canCopy = Boolean(isSinglePageXscpData(patchedXscpData));
+  const copyBlockReason = canCopy
+    ? null
+    : describeTemplateCopyBlocker({
+      packageData: laneBPackageData,
+      fontScan,
+      patchedXscpData,
+    });
   const isPreparingLaneBPage = Boolean(step === "pages" && laneBPackageData && activePageIndex !== null && !patchedXscpData);
 
   return (
@@ -552,9 +559,11 @@ function CustomSiteInstallFlow({
 
   const activeStepIndex = CUSTOM_STEPS.findIndex((item) => item.id === step);
   const requiredAssetsUploaded = !packageData || areRequiredAssetsReady(packageData, uploadedAssets);
+  const requiredFontsReady = !packageData || areRequiredFontsReady(packageData, fontScan);
   const canCopy = Boolean(
     isSinglePageXscpData(patchedXscpData)
     && requiredAssetsUploaded
+    && requiredFontsReady
     && !packageData?.blockedReason,
   );
   const copyBlockReason = canCopy
@@ -563,6 +572,7 @@ function CustomSiteInstallFlow({
       packageData,
       patchedXscpData,
       uploadedAssets,
+      fontScan,
     });
 
   return (
@@ -1105,10 +1115,12 @@ function describeCustomCopyBlocker({
   packageData,
   patchedXscpData,
   uploadedAssets,
+  fontScan,
 }: {
   packageData: MasterCollectionPackage | null;
   patchedXscpData: unknown | null;
   uploadedAssets: UploadedWebflowAsset[];
+  fontScan: FontDetectionResult | null;
 }): string {
   if (!packageData) {
     return "Copy is waiting for a valid package payload.";
@@ -1122,8 +1134,26 @@ function describeCustomCopyBlocker({
     return "Copy is waiting for all required Webflow images to finish preparing.";
   }
 
+  if (!areRequiredFontsReady(packageData, fontScan)) {
+    return "Copy is waiting for required Webflow fonts to be installed and detected.";
+  }
+
   if (packageData.blockedReason) {
     return packageData.blockedReason;
+  }
+
+  return "Copy is blocked by an unknown preparation state.";
+}
+
+function describeTemplateCopyBlocker({
+  patchedXscpData,
+}: {
+  packageData: MasterCollectionPackage | null;
+  fontScan: FontDetectionResult | null;
+  patchedXscpData: unknown | null;
+}): string {
+  if (!isSinglePageXscpData(patchedXscpData)) {
+    return describeFinalPayloadBlocker(patchedXscpData);
   }
 
   return "Copy is blocked by an unknown preparation state.";
