@@ -2,6 +2,22 @@ import type { AssetUploadProgress } from "@/lib/assets/upload";
 import type { MasterCollectionPackage } from "@/lib/package/types";
 import type { UploadedWebflowAsset } from "@/lib/webflow/types";
 
+// Fractional credit per status so the bar moves smoothly through each asset's
+// lifecycle instead of jumping from 0% to 100% only when uploadedAssets resolves.
+// "queued" and "fetching-source" stay at 0 so existing tests that assert "0%"
+// while the source fetch is pending continue to pass.
+const STATUS_WEIGHT: Record<AssetUploadProgress["status"], number> = {
+  queued: 0,
+  "fetching-source": 0,
+  hashing: 0.25,
+  "checking-existing": 0.25,
+  "reusing-existing": 0.5,
+  "creating-webflow-asset": 0.5,
+  "uploading-binary": 0.75,
+  uploaded: 1,
+  failed: 0,
+};
+
 export function AssetProgressPanel({
   packageData,
   uploadProgress,
@@ -38,9 +54,28 @@ export function summarizeAssetProgress(
   }
 
   const uploadedKeys = new Set(uploadedAssets.map((asset) => asset.packageAssetKey));
-  const failedCount = packageData.assets.filter((asset) => uploadProgress[asset.key]?.status === "failed").length;
-  const completedCount = packageData.assets.filter((asset) => uploadedKeys.has(asset.key)).length;
-  const percent = Math.round((completedCount / total) * 100);
+  let failedCount = 0;
+  let weightedSum = 0;
+  let completedCount = 0;
+
+  for (const asset of packageData.assets) {
+    const status = uploadProgress[asset.key]?.status;
+    const isAlreadyUploaded = uploadedKeys.has(asset.key) || status === "uploaded" || status === "reusing-existing";
+    if (isAlreadyUploaded) {
+      completedCount += 1;
+      weightedSum += 1;
+      continue;
+    }
+    if (status === "failed") {
+      failedCount += 1;
+      continue;
+    }
+    if (status) {
+      weightedSum += STATUS_WEIGHT[status] ?? 0;
+    }
+  }
+
+  const percent = Math.min(100, Math.round((weightedSum / total) * 100));
 
   return { total, completedCount, failedCount, percent };
 }

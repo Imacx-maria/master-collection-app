@@ -9,6 +9,8 @@ bundle.zip
 bundles/
 *.tsbuildinfo
 
+dev-server*.log
+
 .env
 .env.*
 !.env.example

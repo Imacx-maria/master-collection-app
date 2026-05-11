@@ -32,6 +32,7 @@ export function patchXscpData({
   }
 
   patchResidualLocalAssetReferences(xscpData, packageData.assets, uploadedAssets);
+  removeConverterOnlyPayloadMetadata(xscpData);
   return xscpData;
 }
 
@@ -338,6 +339,13 @@ function emptyPayloadAssets(value: unknown) {
   const payload = value.payload;
   if (!isRecord(payload)) return;
   payload.assets = [];
+}
+
+function removeConverterOnlyPayloadMetadata(value: unknown) {
+  if (!isRecord(value)) return;
+  const payload = value.payload;
+  if (!isRecord(payload)) return;
+  delete payload.imageManifest;
 }
 
 function replacePagePlaceholders(value: unknown, targetPageId: string): unknown {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { patchXscpData } from "./patch";
+import { collectWebflowPasteCrashHazards } from "./webflowCrashAudit";
 import type { MasterCollectionPackage } from "@/lib/package/types";
 
 const basePackage: MasterCollectionPackage = {
@@ -314,6 +315,66 @@ describe("patchXscpData", () => {
     expect(patched.payload.styles[0].styleLess).toContain("https://uploads.webflow.com/Arrow-Small.svg");
     expect(patched.payload.styles[0].variants.main_hover.styleLess).toContain("https://uploads.webflow.com/Arrow-Small.svg");
     expect(patched.payload.assets).toEqual([]);
+  });
+
+  it("strips converter-only imageManifest metadata before final paste safety runs", () => {
+    const packageData: MasterCollectionPackage = {
+      ...basePackage,
+      xscpData: {
+        type: "@webflow/XscpData",
+        payload: {
+          assets: [],
+          imageManifest: {
+            "Hero.png": {
+              originalPath: "images/Hero.png",
+              hostedUrl: "https://flowbridge-assets.example.com/lane-b/images/Hero.png",
+            },
+          },
+          nodes: [
+            {
+              type: "Image",
+              data: {
+                attr: {
+                  src: "images/Hero.png",
+                },
+                img: { id: "" },
+              },
+            },
+          ],
+          styles: [],
+        },
+      },
+      assets: [
+        {
+          key: "hero",
+          fileName: "Hero.png",
+          url: "https://flowbridge-assets.example.com/lane-b/images/Hero.png",
+          mimeType: "image/png",
+          required: true,
+          patchTargets: [],
+        },
+      ],
+    };
+
+    const patched = patchXscpData({
+      packageData,
+      targetPageId: "page_123",
+      uploadedAssets: [
+        {
+          packageAssetKey: "hero",
+          fileName: "Hero.png",
+          assetId: "asset_hero",
+          url: "https://uploads.webflow.com/Hero.png",
+          mode: "data-api",
+        },
+      ],
+    }) as any;
+
+    expect(patched.payload.imageManifest).toBeUndefined();
+    expect(JSON.stringify(patched)).not.toContain("images/Hero.png");
+    expect(patched.payload.nodes[0].data.attr.src).toBe("https://uploads.webflow.com/Hero.png");
+    expect(patched.payload.nodes[0].data.img.id).toBe("asset_hero");
+    expect(collectWebflowPasteCrashHazards(patched)).toEqual([]);
   });
 
   it("preserves converter visual-parity classes, CSS, and embeds while patching app-owned fields", () => {

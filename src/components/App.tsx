@@ -15,6 +15,8 @@ import { LaneBPagePlanStep } from "@/components/LaneBPagePlanStep";
 import { WebflowAccessPanel } from "@/components/WebflowAccessPanel";
 import { FontStatusPanel } from "@/components/FontStatusPanel";
 import { AssetProgressPanel } from "@/components/AssetProgressPanel";
+import { PrepastePreflightPanel } from "@/components/PrepastePreflightPanel";
+import { isWebflowAuthError } from "@/lib/webflow/errors";
 import type { AssetUploadProgress } from "@/lib/assets/upload";
 import { copyXscpDataToClipboard } from "@/lib/clipboard/webflowClipboard";
 import { parseConverterPayloadJson, type CmsManifest, type MultiPageConverterPayload, type SinglePageConverterPayload } from "@/lib/converter/parseConverterPayload";
@@ -134,13 +136,17 @@ function TemplateInstallFlow({
   const [patchedXscpData, setPatchedXscpData] = useState<unknown | null>(null);
   const [activePageIndex, setActivePageIndex] = useState<number | null>(null);
   const [pageStatuses, setPageStatuses] = useState<Record<number, string>>({});
+  const [existingStyleCount, setExistingStyleCount] = useState<number | null>(null);
+  const [fontsConfirmed, setFontsConfirmed] = useState(false);
+  const [pageStateConfirmed, setPageStateConfirmed] = useState(false);
+  const [hasCopiedToWebflow, setHasCopiedToWebflow] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function runAction(action: () => Promise<void>) {
     action().catch((caught) => {
       setStatus(null);
-      setError(caught instanceof Error ? caught.message : "Something went wrong.");
+      setError(formatErrorMessage(caught));
     });
   }
 
@@ -166,6 +172,10 @@ function TemplateInstallFlow({
     setPatchedXscpData(null);
     setActivePageIndex(null);
     setPageStatuses(Object.fromEntries(resolvedPages.map((page) => [page.source.index, "Queued"])));
+    setFontsConfirmed(false);
+    setPageStateConfirmed(false);
+    setHasCopiedToWebflow(false);
+    setExistingStyleCount(null);
     setStatus(`Detected Master Collection multi-page payload with ${payload.pageCount} page(s).`);
     if (resolvedPages[0]) {
       const firstPackage = packageFromInstallPlanPage(resolvedPages[0].source);
@@ -235,6 +245,12 @@ function TemplateInstallFlow({
     setFontChecking(false);
     setUploadedAssets(prepared.uploadedAssets);
     setPatchedXscpData(prepared.patchedXscpData);
+    try {
+      const styleCount = await adapter.countExistingStyles();
+      setExistingStyleCount(styleCount);
+    } catch {
+      setExistingStyleCount(null);
+    }
     setPageStatuses((current) => ({
       ...current,
       [index]: areRequiredFontsReady(packageData, prepared.fontScan) ? "Ready to copy" : "Fonts needed",
@@ -271,10 +287,11 @@ function TemplateInstallFlow({
     if (activePageIndex !== null) {
       setPageStatuses((current) => ({ ...current, [activePageIndex]: "Copied" }));
     }
+    setHasCopiedToWebflow(true);
     setStatus(
       copyResult.mode === "text-only"
         ? "Copied as text fallback. Webflow may reject this paste; use a browser/session that supports application/json clipboard data."
-        : "Copied to Webflow clipboard. Click the Webflow canvas and paste.",
+        : "Copied to Webflow clipboard. Click the Webflow canvas and paste, then click Re-check fonts to confirm.",
     );
   }
 
@@ -293,6 +310,10 @@ function TemplateInstallFlow({
     setPatchedXscpData(null);
     setActivePageIndex(null);
     setPageStatuses({});
+    setExistingStyleCount(null);
+    setFontsConfirmed(false);
+    setPageStateConfirmed(false);
+    setHasCopiedToWebflow(false);
     setStatus(null);
     setError(null);
   }
@@ -300,13 +321,17 @@ function TemplateInstallFlow({
   const hasCms = (laneBCmsManifest?.collectionLists.length ?? 0) > 0;
   const templateSteps = hasCms ? TEMPLATE_STEPS_WITH_CMS : TEMPLATE_STEPS_NO_CMS;
   const activeStepIndex = templateSteps.findIndex((item) => item.id === step);
-  const canCopy = Boolean(isSinglePageXscpData(patchedXscpData));
+  const requiredFontsCount = (laneBPackageData?.fonts ?? []).filter((font) => font.required).length;
+  const fontsAcknowledged = requiredFontsCount === 0 || fontsConfirmed;
+  const preflightConfirmed = fontsAcknowledged && pageStateConfirmed;
+  const canCopy = Boolean(isSinglePageXscpData(patchedXscpData)) && preflightConfirmed;
   const copyBlockReason = canCopy
     ? null
     : describeTemplateCopyBlocker({
       packageData: laneBPackageData,
       fontScan,
       patchedXscpData,
+      preflightConfirmed,
     });
   const isPreparingLaneBPage = Boolean(step === "pages" && laneBPackageData && activePageIndex !== null && !patchedXscpData);
 
@@ -351,6 +376,7 @@ function TemplateInstallFlow({
           fontChecking={fontChecking}
           uploadProgress={uploadProgress}
           uploadedAssets={uploadedAssets}
+          fontPhase={hasCopiedToWebflow ? "post-paste" : "pre-paste"}
           onRecheckFonts={() => runAction(handleRecheckLaneBFonts)}
         />
       ) : null}
@@ -397,6 +423,12 @@ function TemplateInstallFlow({
           siteId={laneBTargetContext?.siteId ?? ""}
           canCopy={canCopy}
           copyBlockReason={copyBlockReason}
+          existingStyleCount={existingStyleCount}
+          fontsConfirmed={fontsConfirmed}
+          pageStateConfirmed={pageStateConfirmed}
+          fontPhase={hasCopiedToWebflow ? "post-paste" : "pre-paste"}
+          onFontsConfirmedChange={setFontsConfirmed}
+          onPageStateConfirmedChange={setPageStateConfirmed}
           onRecheckFonts={() => runAction(handleRecheckLaneBFonts)}
           onCopy={() => runAction(handleCopy)}
           onBack={() => setStep("pages")}
@@ -434,13 +466,17 @@ function CustomSiteInstallFlow({
   const [uploadedAssets, setUploadedAssets] = useState<UploadedWebflowAsset[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Record<string, AssetUploadProgress>>({});
   const [patchedXscpData, setPatchedXscpData] = useState<unknown | null>(null);
+  const [existingStyleCount, setExistingStyleCount] = useState<number | null>(null);
+  const [fontsConfirmed, setFontsConfirmed] = useState(false);
+  const [pageStateConfirmed, setPageStateConfirmed] = useState(false);
+  const [hasCopiedToWebflow, setHasCopiedToWebflow] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function runAction(action: () => Promise<void>) {
     action().catch((caught) => {
       setStatus(null);
-      setError(caught instanceof Error ? caught.message : "Something went wrong.");
+      setError(formatErrorMessage(caught));
     });
   }
 
@@ -461,6 +497,10 @@ function CustomSiteInstallFlow({
     setUploadedAssets([]);
     setUploadProgress({});
     setPatchedXscpData(null);
+    setExistingStyleCount(null);
+    setFontsConfirmed(false);
+    setPageStateConfirmed(false);
+    setHasCopiedToWebflow(false);
     setError(null);
     if (nextPackage.assets.length > 0 && !webflowToken.trim()) {
       setStatus("Paste detected. Webflow access is required before asset preparation.");
@@ -512,6 +552,12 @@ function CustomSiteInstallFlow({
     setFontChecking(false);
     setUploadedAssets(prepared.uploadedAssets);
     setPatchedXscpData(prepared.patchedXscpData);
+    try {
+      const styleCount = await adapter.countExistingStyles();
+      setExistingStyleCount(styleCount);
+    } catch {
+      setExistingStyleCount(null);
+    }
     setStatus(
       activePackageData.blockedReason
         ? "Custom-site payload was prepared, but copy remains blocked until the converter-side issue is resolved."
@@ -536,10 +582,11 @@ function CustomSiteInstallFlow({
     setError(null);
     setStatus("Copying custom-site payload...");
     const copyResult = await copyXscpDataToClipboard(patchedXscpData);
+    setHasCopiedToWebflow(true);
     setStatus(
       copyResult.mode === "text-only"
         ? "Copied as text fallback. Webflow may reject this paste; use a browser/session that supports application/json clipboard data."
-        : "Copied to Webflow clipboard. Click the Webflow canvas and paste.",
+        : "Copied to Webflow clipboard. Click the Webflow canvas and paste, then click Re-check fonts to confirm.",
     );
     setStep("done");
   }
@@ -553,17 +600,23 @@ function CustomSiteInstallFlow({
     setUploadedAssets([]);
     setUploadProgress({});
     setPatchedXscpData(null);
+    setExistingStyleCount(null);
+    setFontsConfirmed(false);
+    setPageStateConfirmed(false);
+    setHasCopiedToWebflow(false);
     setStatus(null);
     setError(null);
   }
 
   const activeStepIndex = CUSTOM_STEPS.findIndex((item) => item.id === step);
   const requiredAssetsUploaded = !packageData || areRequiredAssetsReady(packageData, uploadedAssets);
-  const requiredFontsReady = !packageData || areRequiredFontsReady(packageData, fontScan);
+  const requiredFontsCount = (packageData?.fonts ?? []).filter((font) => font.required).length;
+  const fontsAcknowledged = requiredFontsCount === 0 || fontsConfirmed;
+  const preflightConfirmed = fontsAcknowledged && pageStateConfirmed;
   const canCopy = Boolean(
     isSinglePageXscpData(patchedXscpData)
     && requiredAssetsUploaded
-    && requiredFontsReady
+    && preflightConfirmed
     && !packageData?.blockedReason,
   );
   const copyBlockReason = canCopy
@@ -572,7 +625,7 @@ function CustomSiteInstallFlow({
       packageData,
       patchedXscpData,
       uploadedAssets,
-      fontScan,
+      preflightConfirmed,
     });
 
   return (
@@ -605,6 +658,12 @@ function CustomSiteInstallFlow({
           uploadedAssets={uploadedAssets}
           canCopy={canCopy}
           copyBlockReason={copyBlockReason}
+          existingStyleCount={existingStyleCount}
+          fontsConfirmed={fontsConfirmed}
+          pageStateConfirmed={pageStateConfirmed}
+          fontPhase={hasCopiedToWebflow ? "post-paste" : "pre-paste"}
+          onFontsConfirmedChange={setFontsConfirmed}
+          onPageStateConfirmedChange={setPageStateConfirmed}
           onRecheckFonts={() => runAction(handleRecheckFonts)}
           onCopy={() => runAction(handleCopy)}
           onBack={() => setStep("paste")}
@@ -830,6 +889,12 @@ function LaneBCopyStep({
   uploadedAssets,
   canCopy,
   copyBlockReason,
+  existingStyleCount,
+  fontsConfirmed,
+  pageStateConfirmed,
+  fontPhase,
+  onFontsConfirmedChange,
+  onPageStateConfirmedChange,
   onRecheckFonts,
   onCopy,
   onBack,
@@ -842,6 +907,12 @@ function LaneBCopyStep({
   siteId: string;
   canCopy: boolean;
   copyBlockReason: string | null;
+  existingStyleCount: number | null;
+  fontsConfirmed: boolean;
+  pageStateConfirmed: boolean;
+  fontPhase: "pre-paste" | "post-paste";
+  onFontsConfirmedChange: (confirmed: boolean) => void;
+  onPageStateConfirmedChange: (confirmed: boolean) => void;
   onRecheckFonts: () => void;
   onCopy: () => void;
   onBack: () => void;
@@ -855,6 +926,14 @@ function LaneBCopyStep({
       <CardContent className="space-y-3">
         {packageData ? (
           <>
+            <PrepastePreflightPanel
+              packageData={packageData}
+              existingStyleCount={existingStyleCount}
+              fontsConfirmed={fontsConfirmed}
+              pageStateConfirmed={pageStateConfirmed}
+              onFontsConfirmedChange={onFontsConfirmedChange}
+              onPageStateConfirmedChange={onPageStateConfirmedChange}
+            />
             <AssetProgressPanel
               packageData={packageData}
               uploadProgress={uploadProgress}
@@ -864,6 +943,7 @@ function LaneBCopyStep({
               packageData={packageData}
               fontScan={fontScan}
               checking={fontChecking}
+              phase={fontPhase}
               onRecheckFonts={onRecheckFonts}
             />
           </>
@@ -895,6 +975,7 @@ function LaneBPrepareProgressStep({
   fontChecking,
   uploadProgress,
   uploadedAssets,
+  fontPhase,
   onRecheckFonts,
 }: {
   pageName: string;
@@ -903,6 +984,7 @@ function LaneBPrepareProgressStep({
   fontChecking: boolean;
   uploadProgress: Record<string, AssetUploadProgress>;
   uploadedAssets: UploadedWebflowAsset[];
+  fontPhase: "pre-paste" | "post-paste";
   onRecheckFonts: () => void;
 }) {
   return (
@@ -921,6 +1003,7 @@ function LaneBPrepareProgressStep({
           packageData={packageData}
           fontScan={fontScan}
           checking={fontChecking}
+          phase={fontPhase}
           onRecheckFonts={onRecheckFonts}
         />
       </CardContent>
@@ -936,6 +1019,12 @@ function CustomPrepareStep({
   uploadedAssets,
   canCopy,
   copyBlockReason,
+  existingStyleCount,
+  fontsConfirmed,
+  pageStateConfirmed,
+  fontPhase,
+  onFontsConfirmedChange,
+  onPageStateConfirmedChange,
   onRecheckFonts,
   onCopy,
   onBack,
@@ -948,6 +1037,12 @@ function CustomPrepareStep({
   uploadedAssets: UploadedWebflowAsset[];
   canCopy: boolean;
   copyBlockReason: string | null;
+  existingStyleCount: number | null;
+  fontsConfirmed: boolean;
+  pageStateConfirmed: boolean;
+  fontPhase: "pre-paste" | "post-paste";
+  onFontsConfirmedChange: (confirmed: boolean) => void;
+  onPageStateConfirmedChange: (confirmed: boolean) => void;
   onRecheckFonts: () => void;
   onCopy: () => void;
   onBack: () => void;
@@ -966,6 +1061,15 @@ function CustomPrepareStep({
           </div>
         ) : null}
 
+        <PrepastePreflightPanel
+          packageData={packageData}
+          existingStyleCount={existingStyleCount}
+          fontsConfirmed={fontsConfirmed}
+          pageStateConfirmed={pageStateConfirmed}
+          onFontsConfirmedChange={onFontsConfirmedChange}
+          onPageStateConfirmedChange={onPageStateConfirmedChange}
+        />
+
         <AssetProgressPanel
           packageData={packageData}
           uploadProgress={uploadProgress}
@@ -976,6 +1080,7 @@ function CustomPrepareStep({
           packageData={packageData}
           fontScan={fontScan}
           checking={fontChecking}
+          phase={fontPhase}
           onRecheckFonts={onRecheckFonts}
         />
 
@@ -1115,12 +1220,12 @@ function describeCustomCopyBlocker({
   packageData,
   patchedXscpData,
   uploadedAssets,
-  fontScan,
+  preflightConfirmed,
 }: {
   packageData: MasterCollectionPackage | null;
   patchedXscpData: unknown | null;
   uploadedAssets: UploadedWebflowAsset[];
-  fontScan: FontDetectionResult | null;
+  preflightConfirmed: boolean;
 }): string {
   if (!packageData) {
     return "Copy is waiting for a valid package payload.";
@@ -1134,8 +1239,8 @@ function describeCustomCopyBlocker({
     return "Copy is waiting for all required Webflow images to finish preparing.";
   }
 
-  if (!areRequiredFontsReady(packageData, fontScan)) {
-    return "Copy is waiting for required Webflow fonts to be installed and detected.";
+  if (!preflightConfirmed) {
+    return "Copy is waiting for both preflight checkboxes (fonts installed, target page acknowledged) above.";
   }
 
   if (packageData.blockedReason) {
@@ -1147,16 +1252,32 @@ function describeCustomCopyBlocker({
 
 function describeTemplateCopyBlocker({
   patchedXscpData,
+  preflightConfirmed,
 }: {
   packageData: MasterCollectionPackage | null;
   fontScan: FontDetectionResult | null;
   patchedXscpData: unknown | null;
+  preflightConfirmed: boolean;
 }): string {
   if (!isSinglePageXscpData(patchedXscpData)) {
     return describeFinalPayloadBlocker(patchedXscpData);
   }
 
+  if (!preflightConfirmed) {
+    return "Copy is waiting for both preflight checkboxes (fonts installed, target page acknowledged) above.";
+  }
+
   return "Copy is blocked by an unknown preparation state.";
+}
+
+function formatErrorMessage(caught: unknown): string {
+  if (isWebflowAuthError(caught)) {
+    return caught.message;
+  }
+  if (caught instanceof Error) {
+    return caught.message;
+  }
+  return "Something went wrong.";
 }
 
 function areRequiredFontsReady(

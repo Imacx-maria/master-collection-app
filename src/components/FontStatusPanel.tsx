@@ -5,15 +5,19 @@ import type { MasterCollectionPackage } from "@/lib/package/types";
 import { cn } from "@/lib/utils";
 import type { FontDetectionResult } from "@/lib/webflow/types";
 
+export type FontStatusPhase = "pre-paste" | "post-paste";
+
 export function FontStatusPanel({
   packageData,
   fontScan,
   checking = false,
+  phase = "pre-paste",
   onRecheckFonts,
 }: {
   packageData: MasterCollectionPackage;
   fontScan: FontDetectionResult | null;
   checking?: boolean;
+  phase?: FontStatusPhase;
   onRecheckFonts: () => void;
 }) {
   const [showHelp, setShowHelp] = useState(false);
@@ -21,27 +25,42 @@ export function FontStatusPanel({
   const missing = fontScan?.missing ?? (checking ? [] : requiredFonts);
   const installed = fontScan?.installed ?? [];
   const unavailable = fontScan?.source === "unavailable";
-  const allInstalled = requiredFonts.length > 0 && Boolean(fontScan) && !unavailable && missing.length === 0;
   const hasNoRequiredFonts = requiredFonts.length === 0;
-  const hasUndetectedFonts = requiredFonts.length > 0 && Boolean(fontScan) && missing.length > 0;
+  const allDetected = !hasNoRequiredFonts && Boolean(fontScan) && !unavailable && missing.length === 0;
+  const hasUndetectedFonts = !hasNoRequiredFonts && Boolean(fontScan) && missing.length > 0;
+  const isPostPaste = phase === "post-paste";
 
   let title = "Checking fonts...";
+  let body = "";
   let tone: "ok" | "warn" | "muted" = "muted";
+
   if (hasNoRequiredFonts) {
     title = "No required fonts";
+    body = "This payload does not require custom fonts.";
     tone = "ok";
-  } else if (allInstalled) {
+  } else if (allDetected) {
     title = "Fonts detected";
+    body = "All required font families were detected in the current Webflow site.";
     tone = "ok";
-  } else if (hasUndetectedFonts) {
-    title = "Font check inconclusive";
+  } else if (unavailable) {
+    title = "Font scan unavailable";
+    body = "The Designer API could not scan styles. Verify required fonts in Site Settings → Fonts.";
     tone = "warn";
+  } else if (hasUndetectedFonts && isPostPaste) {
+    title = "Required fonts not detected after paste";
+    body = "Even after pasting, the Designer API can't see these fonts in any style. Open Site Settings → Fonts and confirm they're installed.";
+    tone = "warn";
+  } else if (hasUndetectedFonts && !isPostPaste) {
+    title = "Required fonts — verify after paste";
+    body = "The Designer API only sees fonts that are already applied to a style. After you paste into the Webflow canvas, click Re-check fonts to confirm.";
+    tone = "muted";
   } else if (!checking) {
-    title = "Review required fonts";
-    tone = "warn";
+    title = "Required fonts";
+    body = "Verify these are installed in Site Settings → Fonts.";
+    tone = "muted";
   }
 
-  const showRecheck = !hasNoRequiredFonts && !checking && (!fontScan || missing.length > 0 || unavailable);
+  const showRecheck = !hasNoRequiredFonts && !checking;
 
   return (
     <section
@@ -59,13 +78,7 @@ export function FontStatusPanel({
           {tone === "ok" ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
           <div>
             <p className="font-medium">{title}</p>
-            <p className="text-[10px] opacity-80">
-              {hasNoRequiredFonts
-                ? "This payload does not require custom fonts."
-                : allInstalled
-                  ? "All required font families were detected through the Designer API."
-                  : "Webflow may still have these installed and assigned; the Designer API scan can miss fonts that the right panel shows correctly."}
-            </p>
+            <p className="text-[10px] opacity-80">{body}</p>
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -86,12 +99,16 @@ export function FontStatusPanel({
           {requiredFonts.map((font) => {
             const isInstalled = installed.some((item) => item.family === font.family);
             const isMissing = missing.some((item) => item.family === font.family);
+            const label = labelFor({ isInstalled, isMissing, isPostPaste, checking });
+            const labelTone = isInstalled
+              ? "text-emerald-600"
+              : isMissing && isPostPaste
+                ? "text-amber-600"
+                : "text-muted-foreground";
             return (
               <div key={font.family} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                 <span className="font-medium">{formatFontRequirement(font)}</span>
-                <span className={cn("text-[10px] uppercase", isInstalled ? "text-emerald-600" : isMissing ? "text-amber-600" : "text-muted-foreground")}>
-                  {isInstalled ? "detected" : isMissing ? "not detected" : "pending"}
-                </span>
+                <span className={cn("text-[10px] uppercase", labelTone)}>{label}</span>
               </div>
             );
           })}
@@ -100,14 +117,31 @@ export function FontStatusPanel({
 
       {showHelp ? (
         <div className="border border-border bg-background/70 p-3 text-[10px] leading-relaxed text-muted-foreground">
-          If Webflow's right typography panel shows these families assigned correctly, you can continue. Re-check asks the Designer API to scan styles, font variables, and the selected element again, but it may still miss fonts that Webflow itself can use.
+          The Designer API can only see fonts that a style references. To verify a font, open Webflow Site Settings → Fonts and confirm the family is installed; if it is, paste the package, then click Re-check fonts so the freshly pasted styles surface the fonts to the scan.
         </div>
       ) : null}
     </section>
   );
 }
 
-function formatFontRequirement(font: MasterCollectionPackage["fonts"][number]): string {
+function labelFor({
+  isInstalled,
+  isMissing,
+  isPostPaste,
+  checking,
+}: {
+  isInstalled: boolean;
+  isMissing: boolean;
+  isPostPaste: boolean;
+  checking: boolean;
+}): string {
+  if (isInstalled) return "detected";
+  if (checking) return "checking";
+  if (isMissing) return isPostPaste ? "not detected" : "pending paste";
+  return "pending";
+}
+
+export function formatFontRequirement(font: MasterCollectionPackage["fonts"][number]): string {
   const details = [
     font.weights?.length ? `weights ${font.weights.join(", ")}` : "",
     font.styles?.length ? `styles ${font.styles.join(", ")}` : "",

@@ -49,6 +49,7 @@ export interface WebflowAdapter {
   setExtensionSize(size: "default" | "comfortable" | "large" | { width: number; height: number }): Promise<void>;
   getTargetContext(): Promise<WebflowTargetContext>;
   scanFonts(fonts: SimpleFontRequirement[]): Promise<FontDetectionResult>;
+  countExistingStyles(): Promise<number>;
   createAsset(file: File, packageAssetKey: string): Promise<UploadedWebflowAsset>;
   getAllAssets?(): Promise<WebflowAssetReference[]>;
   listPages(): Promise<WebflowPageReference[]>;

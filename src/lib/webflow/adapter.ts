@@ -426,6 +426,17 @@ export function createWebflowAdapter(): WebflowAdapter {
       };
     },
 
+    async countExistingStyles(): Promise<number> {
+      const wf = getWebflowGlobal();
+      if (!wf?.getAllStyles) return 0;
+      try {
+        const styles = await wf.getAllStyles();
+        return Array.isArray(styles) ? styles.length : 0;
+      } catch {
+        return 0;
+      }
+    },
+
     async createAsset(file, packageAssetKey) {
       const wf = getWebflowGlobal();
       if (!wf?.createAsset) {

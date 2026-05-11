@@ -16,12 +16,31 @@ C:\Users\maria\Desktop\pessoal\FLOW_PARTY\MASTER-COLLECTION
 
 The app is not the website. It installs purchased packages inside the buyer's current Webflow project.
 
+This child project shares the parent Master Collection AI brain:
+
+```text
+C:\Users\maria\Desktop\pessoal\FLOW_PARTY\MASTER-COLLECTION\AI_OS
+```
+
+Do not create a local `app/AI_OS/` folder.
+
 ## Start Here
 
 1. Read `../AI.md`.
 2. Read `../AGENTS.md`.
 3. Read `../docs/ARCHITECTURE.md`.
 4. Read `../docs/plans/001-master-collection-extension-mvp.md`.
+5. Read `../AI_OS/EXECUTION_CONTRACT.md` before substantial, regression-prone, package/install, browser/paste, generated-output, audit/report, or autonomous work.
+
+## Execution Contracts
+
+For substantial app changes, package/install behavior, browser/paste evidence, audits/reports, generated outputs, or autonomous work, create or resume exactly one active ExecPlan under:
+
+```text
+..\AI_OS\EXEC_PLANS\active\
+```
+
+Close that ExecPlan with validation evidence before claiming completion.
 
 ## Documentation
 

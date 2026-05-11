@@ -23,11 +23,30 @@ Creates `node.data.img = { id: assetId }` when the img binding is absent. This h
 the ~17 images that escape CDN relink in the converter and therefore never had their
 `node.data.img` initialized by `applyCdnAssetRelinks`.
 
-### App.tsx — canCopy (Lane B)
-`canCopy = isSinglePageXscpData(patchedXscpData)` — nothing else.
-Fonts are informational warnings displayed in FontStatusPanel. They do NOT gate copy.
-`patchedXscpData` being null IS the correct hard blocker (it stays null if
+### patch.ts — converter-only metadata
+`patchXscpData` strips `payload.imageManifest` after asset patching. That manifest is
+converter evidence metadata and can contain `originalPath: "images/..."` strings; it
+must not survive into the final app paste payload or the final crash audit will treat
+metadata as unresolved local image URLs.
+
+### App.tsx — canCopy (Lane B, updated 2026-05-09)
+`canCopy = isSinglePageXscpData(patchedXscpData) && preflightConfirmed` where
+`preflightConfirmed = (requiredFontsCount === 0 || fontsConfirmed) && pageStateConfirmed`.
+
+`adapter.scanFonts` is informational only — it does NOT auto-block copy. The
+Designer API can't see fonts that aren't applied to a style, so missing-font
+signals are unreliable pre-paste. The user explicitly confirms fonts via the
+PrepastePreflightPanel checkbox; same for accepting that existing styles will be
+duplicated by Webflow's paste.
+
+`patchedXscpData` being null IS still a hard blocker (it stays null if
 `preparePackageForWebflow` threw — e.g. because a required asset failed to upload).
+
+### App.tsx — canCopy (Lane A, updated 2026-05-09)
+`canCopy = isXscpData && requiredAssetsUploaded && preflightConfirmed && !blockedReason`.
+The old `requiredFontsReady` auto-gate is gone — replaced by the user-confirmed
+preflight checkbox, same as Lane B. Asset upload completion is still a real,
+factual gate.
 
 ### App.tsx — setExtensionSize
 `adapter.setExtensionSize?.({ width: 750, height: 700 })` called on mount via useEffect.

@@ -1,7 +1,15 @@
 // Webflow Data API v2 calls go through the FlowBridge Cloudflare Worker proxy
 // to bypass browser CORS. The token travels browser -> Worker -> api.webflow.com;
 // it is never persisted server-side.
+import { WebflowAuthError } from "@/lib/webflow/errors";
+
 const DEFAULT_WF_PROXY = "https://flowbridge-assets.vanquish-ideas.workers.dev/wf-api";
+
+function throwIfAuthError(status: number, body: string): void {
+  if (status === 401 || status === 403) {
+    throw new WebflowAuthError(status, body);
+  }
+}
 
 export const WF_PROXY = String(import.meta.env.VITE_MASTER_COLLECTION_WF_PROXY || DEFAULT_WF_PROXY).replace(/\/+$/, "");
 
@@ -67,6 +75,7 @@ export async function listCollections(
   const resp = await wfFetch("GET", `/v2/sites/${siteId}/collections`, null, token);
   if (!resp.ok) {
     const text = await resp.text();
+    throwIfAuthError(resp.status, text);
     throw new Error(`List collections failed (HTTP ${resp.status}): ${text}`);
   }
   const data = (await resp.json()) as { collections?: WebflowCollectionSummary[] };
@@ -77,6 +86,7 @@ export async function listAccessibleSites(token: string): Promise<WebflowSiteSum
   const resp = await wfFetch("GET", "/v2/sites", null, token);
   if (!resp.ok) {
     const text = await resp.text();
+    throwIfAuthError(resp.status, text);
     throw new Error(`List sites failed (HTTP ${resp.status}): ${text}`);
   }
 
@@ -96,6 +106,7 @@ export async function listSiteAssets(
     const resp = await wfFetch("GET", `/v2/sites/${siteId}/assets?limit=${limit}&offset=${offset}`, null, token);
     if (!resp.ok) {
       const text = await resp.text();
+      throwIfAuthError(resp.status, text);
       throw new Error(`List assets failed (HTTP ${resp.status}): ${text}`);
     }
 
@@ -119,6 +130,7 @@ export async function createSiteAssetUpload(
   const resp = await wfFetch("POST", `/v2/sites/${siteId}/assets`, { fileName, fileHash }, token);
   if (!resp.ok) {
     const text = await resp.text();
+    throwIfAuthError(resp.status, text);
     throw new Error(`Create asset failed (HTTP ${resp.status}): ${text}`);
   }
   return (await resp.json()) as WebflowCreateAssetResponse;

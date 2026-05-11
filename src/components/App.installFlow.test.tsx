@@ -14,6 +14,7 @@ const { adapterMocks, cmsMocks, clipboardMocks } = vi.hoisted(() => ({
     listPages: vi.fn(),
     isAvailable: vi.fn().mockReturnValue(true),
     setExtensionSize: vi.fn(),
+    countExistingStyles: vi.fn().mockResolvedValue(0),
   },
   cmsMocks: {
     listSiteAssets: vi.fn(),
@@ -241,6 +242,15 @@ function pasteLaneAPayload(json: string) {
   });
 }
 
+function confirmPreflight() {
+  const fontsCheckbox = screen.queryByLabelText(/I installed the required fonts/i) as HTMLInputElement | null;
+  if (fontsCheckbox && !fontsCheckbox.disabled && !fontsCheckbox.checked) {
+    fireEvent.click(fontsCheckbox);
+  }
+  const pageCheckbox = screen.getByLabelText(/fresh Webflow page/i) as HTMLInputElement;
+  if (!pageCheckbox.checked) fireEvent.click(pageCheckbox);
+}
+
 describe("App lane flows", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -377,8 +387,10 @@ describe("App lane flows", () => {
 
     await waitFor(() => {
       expect(adapterMocks.switchPage).toHaveBeenCalledWith(expect.objectContaining({ id: "page_home", name: "Home" }));
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeInTheDocument();
     });
+    confirmPreflight();
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
 
     expect(screen.queryByRole("button", { name: /Prepare payload/i })).toBeNull();
     expect(screen.queryByLabelText(/Webflow Site API Token/i)).toBeNull();
@@ -420,8 +432,10 @@ describe("App lane flows", () => {
     deferredSourceFetch.resolve();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeInTheDocument();
     });
+    confirmPreflight();
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
   });
 
   it("auto-prepares Lane A after a valid paste and renames the copy action", async () => {
@@ -445,12 +459,14 @@ describe("App lane flows", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Custom-site payload is ready for Webflow paste/i)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeInTheDocument();
     });
+    confirmPreflight();
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
     expect(screen.queryByRole("button", { name: /Paste to Webflow/i })).toBeNull();
   });
 
-  it("blocks Lane A copy when required fonts are not detected", async () => {
+  it("Lane A pre-paste shows pending fonts and blocks copy until preflight is confirmed", async () => {
     adapterMocks.scanFonts.mockResolvedValue({
       installed: [],
       missing: [{ family: "Fixture Sans", weights: [400], styles: ["normal"], required: true }],
@@ -467,11 +483,14 @@ describe("App lane flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Proceed/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Font check inconclusive/i)).toBeInTheDocument();
-      expect(screen.getByText(/not detected/i)).toBeInTheDocument();
+      expect(screen.getByText(/Required fonts — verify after paste/i)).toBeInTheDocument();
+      expect(screen.getByText(/pending paste/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeDisabled();
-      expect(screen.getByText(/Copy is waiting for required Webflow fonts/i)).toBeInTheDocument();
+      expect(screen.getByText(/Copy is waiting for both preflight checkboxes/i)).toBeInTheDocument();
     });
+
+    confirmPreflight();
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
   });
 
   it("allows Lane B copy when required fonts are not detected because fonts are informational", async () => {
@@ -509,10 +528,12 @@ describe("App lane flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
-      expect(screen.getByText(/Font check inconclusive/i)).toBeInTheDocument();
-      expect(screen.queryByText(/Copy is waiting for required Webflow fonts/i)).toBeNull();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeInTheDocument();
+      expect(screen.getByText(/Required fonts — verify after paste/i)).toBeInTheDocument();
     });
+    confirmPreflight();
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+    expect(screen.queryByText(/Copy is waiting for required Webflow fonts/i)).toBeNull();
   });
 
   it("shows not-detected font rows, manual info, and re-check without an Install in Webflow button", async () => {
@@ -538,14 +559,15 @@ describe("App lane flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Font check inconclusive/i)).toBeInTheDocument();
+      expect(screen.getByText(/Required fonts — verify after paste/i)).toBeInTheDocument();
       expect(screen.getByText(/Sora - weights 400, 700 - styles normal/i)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
     });
+    confirmPreflight();
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
 
     expect(screen.queryByRole("button", { name: /Install in Webflow/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Font install instructions/i }));
-    expect(screen.getByText(/right typography panel shows these families assigned correctly/i)).toBeInTheDocument();
+    expect(screen.getByText(/Designer API can only see fonts that a style references/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Re-check fonts/i }));
 
     await waitFor(() => {
@@ -574,8 +596,10 @@ describe("App lane flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeInTheDocument();
     });
+    confirmPreflight();
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: /Copy to Webflow/i }));
 
@@ -595,8 +619,10 @@ describe("App lane flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeInTheDocument();
     });
+    confirmPreflight();
+    expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: /Copy to Webflow/i }));
 
@@ -642,6 +668,6 @@ describe("App lane flows", () => {
       expect(screen.getByRole("button", { name: /Copy to Webflow/i })).toBeInTheDocument();
     });
     expect(screen.queryByText(/CMS Import/i)).toBeNull();
-    expect(screen.getByText(/No required fonts/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/No required fonts/i).length).toBeGreaterThan(0);
   });
 });
